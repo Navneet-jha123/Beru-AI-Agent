@@ -1,6 +1,7 @@
 # ⚡ BERU AI AGENT
 ### *India's Sovereign Autonomous OS Agent | Jack of All Trades, Master of All*
 
+[![BERU Security Tests](https://github.com/Navneet-jha123/Beru-AI-Agent/actions/workflows/test.yml/badge.svg)](https://github.com/Navneet-jha123/Beru-AI-Agent/actions/workflows/test.yml)
 ---
 
 ## 🚀 Overview
