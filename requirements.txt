@@ -1,0 +1,40 @@
+# Core LLM providers
+groq>=0.11.0,<1.0
+google-genai>=0.3.0,<1.0
+openai>=1.0.0,<2.0
+python-dotenv>=1.0.0,<2.0
+
+# Web framework (Streamlit UI)
+streamlit>=1.30.0,<2.0
+
+# HTTP client (hacker mode, gateway)
+requests>=2.31.0,<3.0
+
+# Telegram bridge
+python-telegram-bot>=21.0,<22.0
+
+# Windows automation
+pywinauto>=0.6.8,<1.0
+pyautogui>=0.9.54,<1.0
+pydirectinput>=1.0.4,<2.0
+
+# Vision / screenshots
+mss>=9.0.1,<10.0
+pillow>=10.0.0,<12.0
+pytesseract>=0.3.10,<1.0
+
+# Browser automation
+playwright>=1.40.0,<2.0
+
+# System monitoring
+psutil>=5.9.0,<7.0
+
+# Screenshot diffing (browser_agent.py, vision_uia.py)
+numpy>=1.26.0,<3.0
+
+# CLI / notifications
+rich>=13.0.0,<14.0
+plyer>=2.1.0,<3.0
+
+# Testing
+pytest>=8.0.0,<9.0

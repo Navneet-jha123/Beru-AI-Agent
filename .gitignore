@@ -1,0 +1,62 @@
+# ---- Secrets ----
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ---- Virtual Environments ----
+.venv/
+venv/
+ENV/
+env/
+
+# ---- IDE / Editor ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Workspace Artifacts (user data) ----
+workspace/traces/*.jsonl
+workspace/benchmarks/*.json
+workspace/snapshots/*.png
+workspace/snapshots/*.snap
+workspace/browser_session.json
+workspace/beru_ai_agent_brain.db
+workspace/beru_antigravity_brain.db
+workspace/rules.json
+workspace/schedules.json
+workspace/forged_tools/backups/
+workspace/forged_tools/forge_audit.jsonl
+workspace/forged_tools/pending.json
+
+# ---- Forged tools (user-generated, not source) ----
+workspace/forged_tools/*.py
+!workspace/forged_tools/.gitkeep
+
+# ---- Keep the workspace structure but not its contents ----
+!workspace/
+!workspace/forged_tools/
+!workspace/traces/
+!workspace/benchmarks/
+!workspace/snapshots/
