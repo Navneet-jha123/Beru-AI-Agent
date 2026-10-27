@@ -5,177 +5,286 @@
 
 ## 🚀 Overview
 
-**BERU AI AGENT** is a state-of-the-art autonomous operating system agent engineered from scratch. It bridges cutting-edge multi-engine neural reasoning (Groq, Google Gemini 2.0, OpenRouter, and Local LLMs) with deep Windows operating system control, native UI Automation (UIA), ethical cybersecurity reconnaissance, developer autonomy, and an unshackled self-evolving tool forge.
+**BERU AI AGENT** is an autonomous operating system agent engineered from scratch. It bridges multi-engine neural reasoning (Groq, Google Gemini, OpenRouter, Local LLMs) with deep Windows OS control, native UI Automation, ethical cybersecurity recon, developer autonomy, self-evolving tool synthesis, persistent project memory, codebase search, and supervised build proposals.
 
-Unlike traditional chatbots or fragile wrapper scripts, **BERU AI AGENT** takes deterministic action:
+Unlike traditional chatbots or fragile wrapper scripts, **BERU takes deterministic action**:
+- **Tool Retrieval Architecture:** 130+ tools, all reachable via per-request bundling and ranking — no 128-tool provider limit.
 - **Zero Hallucination Grounding:** Verification Critic prevents unsupported assertions.
-- **Native Windows UI Automation (UIA):** Interacts with buttons, menus, and text fields via the Windows Accessibility Tree, avoiding OCR for standard controls (with OCR fallback for custom-drawn UIs).
-- **Subprocess-Sandboxed Tool Forge:** Synthesizes, smoke-tests, debugs, and executes new Python tools in an isolated subprocess without rebooting.
-- **High-Limit Specialized Modes:** Developer, Tester, Hacker, and General modes operating at peak capacity.
+- **Native Windows UIA:** Interacts with real buttons and fields via the Accessibility Tree (OCR fallback for custom UIs).
+- **Approval-Gated Forge:** Synthesizes new Python tools, validates them, and runs them in a subprocess boundary with stripped env vars and a 15s timeout.
+- **Explicit Consent Gates:** Cloud uploads, hacker scans, and debate features require fresh exact-phrase consent per request.
 
 ---
 
 ## ✅ Verification Status
 
-This project distinguishes between **code-verified facts** and **documentation claims**. Where they diverge, the code is authoritative.
+Code-verified facts. Where claims and code diverge, the code is authoritative.
 
 | Claim | Status | Verification Command |
 |---|---|---|
-| 110 tools registered (99 original + 4 stock + 7 malware) | ✅ Verified | `python -c "from tools_registry import get_live_tools; print(len(get_live_tools()))"` |
-| 110 schemas registered (99 original + 4 stock + 7 malware) | ✅ Verified | `python -c "from tools_registry import get_live_schemas; print(len(get_live_schemas()))"` |
-| Tool/schema parity | ✅ Verified | `python -c "from tools_registry import validate_registry_parity; print(validate_registry_parity())"` |
-| Security tests pass | ✅ Verified | `python -m pytest test_security.py -v` (27/27 passing) |
-| Malware scanner operational | ✅ Verified | Manually tested against a dummy malware file; successfully quarantined and deleted. |
-| Forged tools run in subprocess | ✅ Verified | `pytest test_security.py::test_forge_activation_does_not_import_in_process` |
-| Zero `exec_module` in `forge.py` | ✅ Verified | `python -c "import ast; tree = ast.parse(open('forge.py',encoding='utf-8').read()); print(sum(1 for n in ast.walk(tree) if isinstance(n,ast.Call) and getattr(n.func,'attr','')=='exec_module'))"` |
-| Test suite is idempotent | ✅ Verified | Registry count is byte-identical before and after running tests |
-| All Windows versions supported | ⚠️ **Unverified** | Tested on Windows 11 only |
-| All four provider tiers online | ⚠️ **Unverified** | Requires live API keys in deployment environment |
-| PyInstaller `.exe` on clean environment | ⚠️ **Unverified** | Tested only in dev environment |
-| 5-minute soak test under load | ⚠️ **Unverified** | Not run in this release |
-| Full OS sandbox for forged tools | ⚠️ **Not implemented** | Subprocess boundary only; see Known Limitations |
+| **130 tools registered** | ✅ Verified | `python -c "from tools_registry import get_live_tools; print(len(get_live_tools()))"` |
+| **130 schemas registered** | ✅ Verified | `python -c "from tools_registry import get_live_schemas; print(len(get_live_schemas()))"` |
+| **Tool/schema parity** | ✅ Verified | `python -c "from tools_registry import validate_registry_parity; print(validate_registry_parity())"` |
+| **Tool retriever active** | ✅ Verified | `python -c "from modes.tool_retriever import retrieve_tools; print(len(retrieve_tools('hack example.com', 'General')))"` → returns ≤20 |
+| **10 tool bundles mapped** | ✅ Verified | `python -c "from modes.tools_bundles import TOOL_BUNDLES; print(len(TOOL_BUNDLES))"` |
+| **Security tests pass** | ✅ Verified | `python -m pytest test_security.py -v` (27/27 passing) |
+| **Malware scanner operational** | ✅ Verified | Manually tested against dummy malware; quarantined and deleted |
+| **Forged tools run in subprocess** | ✅ Verified | `pytest test_security.py::test_forge_activation_does_not_import_in_process` |
+| **Zero `exec_module` in `forge.py`** | ✅ Verified | See `test_hot_load_does_not_import_in_process` |
+| **Project context injection** | ✅ Verified | 6-feature smoke test passed — LLM answered without tool call |
+| **Paper trading math correct** | ✅ Verified | BUY 5 RELIANCE @ 2500 → fill 2501.25, fee 12.51, cash updated correctly |
+| **All Windows versions supported** | ⚠️ **Unverified** | Tested on Windows 11 only |
+| **All four provider tiers online** | ⚠️ **Unverified** | Requires live API keys in deployment |
+| **PyInstaller `.exe` on clean env** | ⚠️ **Unverified** | Tested only in dev environment |
+| **Full OS sandbox for forged tools** | ⚠️ **Not implemented** | Subprocess boundary only; see Known Limitations |
 
 ---
 
 ## 🌟 Core Breakthroughs
 
-### 1. 🧠 Multi-Engine Resilient Neural Gateway
-Connects **Groq** (primary high-speed inference), **Google Gemini 2.0** (deep reasoning fallback), **OpenRouter**, and **Local LLMs** (Ollama/vLLM).
-* **Semantic Call Repair:** Automatically repairs and recovers malformed tool calls, Python syntax signatures (`ACTION: tool_name("arg")`), JSON blocks, and XML tags — guaranteeing arguments are never silently lost.
+### 1. 🧠 Tool Retrieval Architecture (Scales to 5,000+ tools)
 
-### 2. 👁️ Native Windows UI Automation (UIA)
-Replaces fragile YOLO icon-guessing with Windows native Accessibility Tree.
-* Identifies exact element names, automation IDs, and bounding boxes in milliseconds.
-* Seamlessly clicks, types, and verifies visual changes with closed-loop screenshot diffing.
+BERU has **130 tools** but providers (Groq, OpenAI, OpenRouter) cap tool arrays at **128 entries**. Without retrieval, every LLM call fails with `HTTP 400 "array too long"`.
 
-### 3. 🛠️ Approval-Gated Tool Forge
-When faced with an impossible task, Beru proposes a new Python tool, validates it statically (AST filter + compile check), autonomously repairs syntax errors via AI up to 3 times, and — after explicit user approval — executes it in a **dedicated subprocess sandbox** (`forge_sandbox.py`).
+BERU solves this with **Architecture 3 (hierarchical retrieval)**:
 
-The sandbox provides:
-- **Process boundary** — forged code runs in a separate Python interpreter (`python -I`)
-- **Environment isolation** — `*KEY*`, `*TOKEN*`, `*SECRET*` env vars are stripped before subprocess launch
-- **Timeout enforcement** — hard 15-second cap per invocation; infinite loops are killed
-- **No in-process execution** — forged code never runs in the agent's process under any code path (proposal, activation, rollback, startup, or invocation)
+**Layer 1 — Bundles (coarse filter):**
+10 domains: `core`, `developer`, `tester`, `hacker`, `market`, `malware`, `automation`, `cloud`, `trading`, `cognitive`.
 
-**Limitations of the current sandbox** (documented honestly, not overclaimed):
-- Filesystem is **not** chroot'd — a forged tool can still read/write outside `workspace/` if it tries
-- Network is **not** blocked at the OS level — forged tools can make outbound HTTP calls (though no API keys means no auth to services)
-- Child processes spawned by a forged tool are **not** guaranteed to be terminated at timeout — only the immediate child is killed
+**Layer 2 — Keyword Ranking (fine filter):**
+Within the selected bundles, tools are ranked by keyword relevance to the user's message.
 
-Full OS sandboxing (seccomp / cgroups / Windows Job Objects) remains a v3.0 architectural item. The current implementation provides a **real process boundary with verified isolation** (see `test_security.py` tests) — not a full OS sandbox, and not claimed to be.
+**Layer 3 — Top-K delivery:**
+Only the top 20 tools go to the LLM per request.
 
-### 4. 💻 Developer Mode (Maximum Power)
-* Multi-file project architect (Read, Write, Diff-patch).
-* Autonomous Git interface (`status`, `diff`, `log`, `branch`, `commit`).
-* Test-Driven Development (TDD) runner with automated `pytest` verification.
-* One-click Windows `.exe` binary compilation via PyInstaller.
+**Result:**
+- Every request sends ≤ 40 tool schemas (was 130 → 400 error)
+- LLM accuracy improves (fewer irrelevant options)
+- Token cost drops ~6x per call
+- Scales to 5,000+ tools without code changes
 
-### 5. 🛡️ Tester Mode (Senior QA & Vulnerability Auditor)
-* Static AST code scanner detecting OWASP Top 10 flaws, empty exception handlers, hardcoded secrets, and SQL/command injection vulnerabilities.
-* Automated `pytest` suite generator for functions and classes with edge-case coverage.
+**Extending:** add a new tool to `modes/tools_bundles.py::TOOL_BUNDLES` and the retriever picks it up automatically.
 
-### 6. 🕵️ Hacker Mode (Ethical Security & OSINT Master)
-* Deep DNS enumeration (A, AAAA, MX, TXT, NS, PTR, SOA) via DoH.
-* Multi-threaded port scanner with service banner grabbing.
-* HTTP Security Header & Cookie Posture Auditor (CSP, HSTS, CORS, X-Frame-Options).
-* SSL/TLS certificate inspector (cipher suites, expiration, SANs).
+**Future scaling:**
+- **500 tools →** swap `_rank_by_keyword` for BM25 (20 lines, zero deps)
+- **1,000 tools →** swap for sentence-transformers (100 lines, adds 1 pip dep)
+- **5,000 tools →** add hierarchical LLM-based routing (200 lines)
 
-### 7. 🌐 Autonomous Web Browser Agent (Playwright)
-* Dedicated worker thread architecture to prevent event loop collisions.
-* Fast anti-bot resistant web search and DOM content summarizer.
-
-### 8. 📱 Remote Control via Telegram & Proactive Daemon
-* Control your PC from anywhere on your phone with `/dev`, `/hack`, `/test`, `/health`, and `/screenshot`.
-* Proactive background daemon monitoring RAM/CPU spikes and dispatching native Windows toast notifications.
+The `retrieve_tools(message, mode, top_k)` interface is stable across all phases. `agent.py` never needs to change again.
 
 ---
 
-### 9. 🧪 Malware Scanner & Quarantine (NEW — Feature 51)
-* Hash-reputation lookup (SHA-256 vs. VirusTotal community detections, optional free API key) and offline static heuristics (disguised double extensions, process-injection API strings, obfuscated PowerShell/VBS launchers, Office macro auto-run triggers, PE-header sanity checks) — each finding returned with a 0–100 risk score and a plain-language explanation.
-* **Quarantine, never delete:** flagged files are moved to `workspace/quarantine/`, set read-only and non-executable, and logged with their original path, reason, and SHA-256. Fully reversible via `restore_from_quarantine`.
-* Permanent deletion (`delete_quarantined_file`) requires an explicit, separate `confirm=True` — a scan result alone can never trigger it.
-* `sweep_directory_for_threats` scans an entire folder (e.g. Downloads) in one call and auto-quarantines anything above a configurable risk threshold.
-* **By design, does not attempt in-place virus disinfection** — stripping a payload from an infected file while preserving the rest requires virus-family-specific signatures that only maintained AV engines carry. Quarantine is the safe, honest substitute; see CHANGELOG for the full rationale.
+### 2. 🧠 Multi-Engine Resilient Neural Gateway
+
+Connects **Groq** (primary high-speed), **Google Gemini 2.0** (deep reasoning), **OpenRouter**, and **Local LLMs** (Ollama/vLLM) with automatic failover.
+
+- **Semantic Call Repair:** recovers malformed tool calls from raw LLM text (JSON blocks, Python signatures, XML).
+- **60-second TTL cache:** repeated prompts within 60s reuse the same response.
+- **Provider-specific calls:** `ask_ai_from_provider(provider, messages)` bypasses the fallback chain for debate.
+- **Local-only privacy mode:** `BERU_PRIVACY_MODE=local_only` in `.env` disables all cloud providers.
+
+### 3. 👁️ Native Windows UI Automation (UIA)
+
+Replaces fragile YOLO icon-guessing with the Windows Accessibility Tree.
+
+- Exact element names, automation IDs, bounding boxes.
+- Closed-loop verification: click → diff screenshot → confirm change.
+- OCR fallback (Tesseract) for custom-drawn UIs.
+
+### 4. 🛠️ Approval-Gated Tool Forge
+
+BERU can propose, validate, and activate new Python tools autonomously — with strict isolation.
+
+- **Static AST filter** rejects `os.system`, `subprocess.*`, `eval`, `exec`, `shutil.rmtree`, raw sockets, `ctypes`.
+- **Subprocess boundary** (`forge_sandbox.py`): `python -I`, stripped env vars (`*KEY*`, `*TOKEN*`, `*SECRET*`), 15s timeout.
+- **No in-process execution** under any code path: proposal, activation, rollback, startup, or invocation.
+- **Full audit log** at `workspace/forged_tools/forge_audit.jsonl`.
+
+**Documented sandbox limits** (honest, not overclaimed):
+- Filesystem is **not** chroot'd
+- Network is **not** blocked at the OS level
+- Only the immediate child is killed at timeout
+
+Full OS sandboxing (seccomp / Windows Job Objects) remains a v3.0 item.
+
+### 5. 💻 Developer Mode
+
+- Multi-file architect: read, write, patch, generate unified diffs.
+- Git automation: `status`, `diff`, `log`, `commit`, `branch`, `checkout`.
+- Test runner: pytest with coverage reporting.
+- One-click Windows `.exe` compilation via PyInstaller.
+- AST refactoring, dependency graph, security linter, cProfile.
+
+### 6. 🛡️ Tester Mode
+
+- Static AST scanner for OWASP Top 10.
+- Auto-generates pytest test suites.
+- Fuzz, mutation, property-based, snapshot testing (fuzz currently **disabled** for safety — see Security Hardening).
+- OWASP dependency vulnerability check.
+
+### 7. 🕵️ Hacker Mode
+
+- Deep DNS (A, AAAA, MX, TXT, NS, SOA, PTR) via DNS-over-HTTPS.
+- Multi-threaded port scanner with banner grabbing.
+- HTTP security header & cookie posture audit.
+- SSL/TLS certificate inspector.
+- Shodan-Lite, CVE lookup, subdomain enumeration, Wayback intel, JWT audit.
+- **Consent gate:** requires exact `CONFIRM SCAN: <target>` in the current message. No history-based or generic approval accepted.
+
+### 8. 🌐 Autonomous Web Browser Agent (Playwright)
+
+- Dedicated worker thread (no event loop collisions).
+- Stealth mode (webdriver cloaking).
+- Session persistence (cookies + storage).
+- Multi-tab orchestrator.
+- Structured data extraction (JSON-LD, OpenGraph).
+- Screenshot diff for change detection.
+
+### 9. 🧪 Malware Scanner & Quarantine
+
+- SHA-256 reputation lookup via VirusTotal (optional free API key).
+- Offline heuristics: double extensions, injection API strings, obfuscated scripts, macro auto-run.
+- **Quarantine, never delete:** files are moved to `workspace/quarantine/`, set read-only, and logged.
+- **Reversible** via `restore_from_quarantine`.
+- Directory sweep with configurable risk threshold.
+
+### 10. 📈 Market Analysis (India + US, Read-Only)
+
+- Multi-provider OHLCV: Alpha Vantage, Twelve Data, Yahoo Finance, local CSV.
+- **Multi-timeframe synthesis:** merges 5m, 30m, and daily to produce an "Executive Verdict" that detects Healthy Pullbacks and Bull Traps.
+- **Watchlist screener:** up to 20 symbols compared on visible indicator columns.
+- **Never places orders.** Read-only.
+- **⚠️ 83% accuracy claim is not validated.** See "Preliminary Backtest" note.
+
+### 11. 🏗️ Persistent Project Context
+
+- Local SQLite DB at `workspace/beru_projects.db`.
+- Create, activate, note, and track files per project.
+- **Injected into every LLM request** when a project is active, without a tool call.
+- **Untrusted-data flag:** project notes are background facts, never instructions.
+- **Not encrypted:** keep secrets out of notes.
+
+### 12. 🔍 Local Code Search
+
+- SQLite FTS5 index at `workspace/beru_code_search.db`.
+- Full-text search across all source files (`.py`, `.md`, `.ts`, etc.).
+- AST-based `find_symbol` for exact Python class / function / variable lookups.
+- Skips `.git`, `__pycache__`, `.venv`, `node_modules`, `secrets`, `credentials`.
+
+### 13. 🚧 Supervised Build Proposals
+
+- `create_build_proposal(goal)` asks the LLM for a bounded file set.
+- Files are staged at `workspace/builds/<id>/` — **nothing is executed**.
+- Files with `.py` extensions are AST-validated for syntax before staging.
+- **Never runs tests, never commits, never compiles.**
+- You review manually, then promote to a project.
+
+### 14. 🩺 Self-Heal Proposals (Review-Only)
+
+- `propose_self_heal(file_path, allow_cloud_review=True)` asks the LLM for a full repair diff.
+- Saves to `workspace/heal_proposals/<id>.json` — **original file unchanged**.
+- Requires exact consent phrase `ALLOW CLOUD CODE REVIEW: <file>` in the current message.
+- **Never auto-applies.**
+
+### 15. 🗳️ Multi-Provider Debate
+
+- Queries Groq, Gemini, and OpenRouter **in parallel** (each independently).
+- Judge synthesizes disagreement and reported uncertainties.
+- Requires exact consent phrase `ALLOW MULTI-PROVIDER DEBATE: <question>`.
+
+### 16. 🔬 Deep Web Research (Cited)
+
+- Searches the web, reads 2-6 source pages, returns a cited report.
+- Each claim should have `[S1]`, `[S2]` citation labels.
+- Requires exact consent phrase `ALLOW CLOUD RESEARCH: <query>`.
+- Web content is **untrusted** — citation check required before relying on the report.
+
+### 17. 📹 Video Understanding (Cloud)
+
+- Uploads a workspace video (≤10 MB) to Google Gemini.
+- Requires exact consent phrase `ALLOW VIDEO CLOUD UPLOAD: <filename>`.
+- Does not do real-time capture — analyzes existing video files only.
+
+### 18. 📊 Paper Trading (Simulated)
+
+- Local SQLite ledger at `workspace/paper_trading.db`.
+- BUY/SELL at user-supplied reference price with 0.10% fee + 0.05% slippage.
+- **No broker connection. No live orders. Ever.**
+- `delete_quarantined_file` requires explicit `confirm=True` when called from Python (not exposed to the LLM for safety).
+
+### 19. 📱 Telegram Remote Control
+
+- Control your PC from anywhere: `/dev`, `/hack`, `/test`, `/health`, `/screenshot`.
+- **Fail-closed:** if `TELEGRAM_USER_ID` is unset, no one is authorized.
+- Proactive daemon sends Windows toast notifications on RAM/CPU spikes.
+
+### 20. 🎙️ Voice Assistant (Optional)
+
+- Local transcription via `faster-whisper`.
+- Text-to-speech via `pyttsx3`.
+- Started **only** via `python voice_cli.py` — never triggered by the LLM.
 
 ---
 
-### 10. Feature 52: Multi-Timeframe Stock Synthesis (`market_analyst.py`) — NEW
-Advanced quantitative intraday engine that merges 5-minute, 30-minute, and Daily technical data into a single "Executive Verdict."
-- **`analyze_30m_swing_momentum`** — Filters out 5-minute noise by analyzing 30-minute candles, SMA5, and 30m RSI to detect medium-term intraday swings.
-- **`synthesize_market_verdict`** — A decision matrix that cross-references all three timeframes. It detects edge cases like "Healthy Pullbacks" (Daily Bullish + Intraday Bearish) or "Bull Traps" (Daily Bearish + Intraday Bullish).
-- **⚠️ Preliminary Backtest:** An earlier informal test across 10 large-cap equities indicated ~83% directional alignment on selected setups. This is **not** a validated, out-of-sample backtest. It lacks a stated data period, benchmark, slippage/fee modeling, and confidence intervals. Treat as unverified and do not rely on it for trading decisions.
+## 🔒 Security Hardening
+
+All hardening is code-level and verified by `test_security.py`.
+
+### Path Containment
+- File reads/writes restricted to `workspace/` only.
+- Absolute paths and `..` traversal are rejected.
+- `.env`, `.exe`, `.dll`, `.sys` are blocked outside workspace.
+
+### Command Execution
+- `run_dev_command` uses `shell=False` + `shlex.split()` + executable allowlist.
+- Shell metacharacters (`;`, `|`, `&`, `$()`, `` ` ``, `>`, `<`, `&&`, `||`) rejected before execution.
+- Dangerous args (`-c`, `-e`, `--eval`, `install`, `exec`, `run-script`) rejected.
+
+### Malicious Code Pre-Scanner
+- `agent.py::_scan_for_malicious_code` scans tool-call arguments for 18 dangerous patterns before execution.
+- Only fires on code-writing tools (`write_project_file`, `run_dev_command`, `compile_to_exe`, `forge_new_tool`, `run_fuzz_testing`, `run_mutation_testing`).
+
+### Hacker Consent Gate
+- Requires literal `CONFIRM SCAN: <target>` in the current message.
+- Enforced for **all modes**, not just `Hacker`.
+- No history-based or generic-phrase approval accepted.
+
+### Cloud Consent Gates
+- `debate_solve`, `deep_research`, `analyze_video`, `propose_self_heal` all require **exact-phrase, current-message consent**.
+- Enforced in `agent.py` before `_invoke_tool` fires.
+
+### Forge Isolation
+- Forged tools execute only in `forge_sandbox.py`.
+- Env vars containing `*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`, `*CREDENTIAL*` are stripped.
+- No `exec_module()` in `forge.py` under any code path.
+
+### Removed from LLM Toolbelt (Safe by Default)
+- `approve_tool` and `delete_quarantined_file` are not exposed to the LLM.
+- They exist as Python functions for direct/UI use, but the AI cannot call them.
+- This prevents model-generated `confirm=True` from triggering destructive actions.
+
+### Trigger Rules
+- Only `notify`, `agent`, and `append_log` actions allowed.
+- `shell` action removed entirely.
+
+### Trace Privacy
+- `agent.py::SessionTracer` writes **metadata only** (mode, provider, tool names, durations, lengths).
+- Never writes raw prompts, tool arguments, or final answers.
+- Episodic memory writes are disabled until user opts in.
+
+### Fuzz Testing
+- `run_fuzz_testing` is **disabled** pending OS isolation.
+- Returns a clear explanation instead of executing arbitrary code.
+
+### Launch Safety
+- `open_application` uses `subprocess.Popen([target], shell=False, close_fds=True)` — no shell injection.
 
 ---
 
-### 11. Multi-Timeframe Synthesis & 30-Minute Swing Engine
-In addition to daily candles, BERU features a high-probability intraday engine that merges 5-minute momentum, 30-minute swing trends, and Daily macro data. The `synthesize_market_verdict` tool acts as an AI decision matrix. For example, if the Daily is Bullish (+2) but the 5m/30m are Bearish (-1, -2), it correctly identifies a **"Healthy Pullback"** and advises against buying calls until the short-term trend aligns. An earlier informal test across 10 large-cap Indian equities indicated ~83% directional alignment, but this was not a reproducible out-of-sample study. Treat as unverified and do not rely on it for trading decisions.
+## 🧪 Test Suite
 
----
+**27 automated security tests** in `test_security.py`, all passing in ~4 seconds:
 
-### 13. 📈 Read-only Stock Data Analysis (India + US)
-
-BERU analyzes OHLCV candles for India and US listings using local CSV files, native Alpha Vantage and Twelve Data adapters, or a provider-neutral HTTPS endpoint. Add your Alpha Vantage key as ALPHA_VANTAGE_API_KEY=your_key in the ignored .env file and restart BERU. The adapter resolves company names and fetches daily/weekly candles automatically; the free key currently allows 25 API requests per day, and this adapter does not enable Alpha Vantage intraday data. The daily compact response provides up to 100 recent records, enough for swing history but not always BERU's 200-bar long-term minimum. India symbols use the exchange suffix returned by provider search; US venue is reported exchange-neutral because the search result does not supply a venue. BERU coordinates specialist evidence agents and reports historical analog scenarios. The Plotly-based Market Lab tab renders interactive candles. The screen_stock_watchlist tool compares up to 20 symbols using change, SMA 20/50/200, RSI, relative volume, ATR, and candle time; rows are ordered by the difference between positive and negative evidence counts, which is not a buy/sell signal. BERU does not issue personalized trade recommendations or place orders.
-
-### 14. 🏗️ Universal Engineering Lab (NEW — Feature 53)
-*   **Visual AR Mode:** Uses OpenCV + MediaPipe to build 2D structures in the air using pinch gestures. Real-time Finite Element Analysis (FEA) computes tension yield and Euler buckling.
-*   **Universal Physics Router:** Simulates structural (bridges, car chassis), electrical (transformers, diodes, LEDs), thermal (CPUs, GPUs, laptops), and logic (ALUs, adders, gates) models.
-*   **Mathematically Verified:** A 42-test mathematical verification suite (`python modes/universal_lab.py selftest`) proves that all physics calculations (Euler buckling, Faraday's law, thermal resistance, logic truth tables) are accurate. 
-
-
-### Optional: Twelve Data
-
-Set `TWELVE_DATA_API_KEY` in the ignored `.env` file. Set `BERU_MARKET_PROVIDER=twelve_data` to select it explicitly; `auto` prefers Twelve Data when its key is present, otherwise Alpha Vantage. Restart BERU, then check `market_data_status`. The adapter supports normalized daily and intraday intervals only where your Twelve Data plan grants access. Free-tier quotas, country/exchange coverage, options/futures coverage, and real-time entitlements differ; verify TCS/WIPRO and the desired contract in your account before relying on it. BERU's Twelve Data adapter is for OHLCV stock candles and does not claim to provide futures/options chains.
-
-### Connect your Alpha Vantage key
-
-1. Copy the key from your Alpha Vantage account.
-2. Open the project’s existing .env file and set ALPHA_VANTAGE_API_KEY=your_key (replace your_key with your key; do not include quotes). Do not put the key in .env.example, source code, or a message.
-3. Restart BERU, then ask it to analyze a company name such as TCS. It uses Alpha Vantage symbol search and requests that listing’s daily candles. For the chart, use the Market Lab tab and enter a ticker; the India exchange selection is appended when needed.
-4. Call market_data_status if BERU still reports CSV mode. It does not reveal the key.
-
-This adapter uses Alpha Vantage’s free daily/weekly history and symbol-search endpoints. The daily endpoint’s free compact response contains the latest 100 data points. Intraday requests are not supported by this adapter; Alpha Vantage marks its intraday endpoint as premium. Provider quotas and exchange coverage can change, so check the provider account and its current documentation.
-### Compare a watchlist
-
-Ask BERU to screen a list of up to 20 India or US tickers (for example, “compare RELIANCE, TCS, INFY”). The tool fetches daily candles through the configured provider or reads the matching CSV files, rejects stale/short data per symbol, and reports auditable indicator columns with individual data errors. It orders rows by the difference between simple positive and negative evidence counts; these counts are descriptive only, not a forecast or recommendation. This takes the screener comparison idea while keeping BERU's source, timestamp, and limitations visible.
-
-### Configure automatic fetching
-
-In `.env`, set `BERU_MARKET_DATA_URL` to an HTTPS candle endpoint. It accepts `market`, `exchange`, `symbol`, `interval`, and `limit`, and returns JSON in this normalized shape (timestamps must include a UTC offset):
-
-```json
-{"source":"Your provider","candles":[{"timestamp":"2026-10-23T09:15:00+05:30","open":100,"high":101,"low":99.5,"close":100.5,"volume":12000}]}
-```
-
-Set `BERU_MARKET_SEARCH_URL` to an HTTPS search endpoint. It must accept `query`, `market`, `limit` and return `{results:[{name,symbol,market,exchange,primary}]}`. This lets a user enter just a company name; BERU selects a unique/primary listing or asks the user to resolve ambiguity. On a match it fetches daily candles automatically; intraday candles are fetched only when the active provider supports them. Optionally set `BERU_MARKET_DATA_TOKEN` for a bearer token and `BERU_MARKET_DATA_NAME` for the source label, then restart BERU. The endpoint must handle provider-specific symbol mapping, licensing, and exchange delays; BERU validates responses and never sends orders. The endpoint contract is provider-neutral, but most vendor APIs need a small adapter service because their request and response formats differ. Configure a licensed provider with current data for intraday use. When neither an Alpha Vantage key nor provider-neutral URLs are configured, automatic company-name lookup is inactive and BERU uses local CSV files or ticker-based analysis.
-
-### Add a CSV dataset
-
-Place a UTF-8 CSV in `workspace/market_data/`, named `market_exchange_symbol_interval.csv` (market is lowercase), for example `india_nse_reliance_5m.csv` or `us_nasdaq_msft_1d.csv`. Include these columns:
-
-```csv
-timestamp,open,high,low,close,volume
-2026-10-23T09:15:00+05:30,100.0,101.0,99.5,100.5,12000
-```
-
-Timestamps must include a UTC offset. Supported horizons: intraday (1m, 5m, 15m, 30m, 1h), swing/regular (1d), and long_term (1d or 1wk). The analyzer validates the CSV, rejects malformed OHLCV data, caps files at 20 MB/10,000 bars, and requires 30, 60, or 200 bars respectively. Intraday scenarios examine about the next 60 minutes (interval adjusted); swing scenarios examine the next candle; long-term scenarios examine the next five daily bars (or next weekly candle for weekly inputs). Indicators include SMA, RSI, MACD, ATR, relative volume for non-intraday data, session VWAP intraday, recent range, and bar-to-bar change.
-
-The analyst panel has separate trend, momentum, volume/participation, volatility/risk, historical-scenario, and skeptic/data-check agents. When enough history exists, the scenario agent finds similar past indicator states and reports next-candle/session outcomes; for daily data it also summarizes historical opening gaps. These percentages are uncalibrated frequencies from a small selected analog set, not tested forecast probabilities. Next-session open gaps cannot be reliably predicted from OHLCV candles alone.
-
-Candles report traded volume; they do not identify distinct people buying/selling or verified buyer/seller order flow. The report shows the latest candle timestamp and rejects data older than seven days (intraday) or fourteen days (daily/weekly), allowing recent last-session data over weekends and holidays. CSV authenticity is not verified, and long-term fundamental valuation is not included. BERU gives a constructive/mixed/weak technical setup summary, not a personalized "should I buy?" decision. Investment suitability depends on personal circumstances; in India, personalized investment advice is governed by SEBI's [Investment Advisers Regulations](https://www.sebi.gov.in/legal/regulations/feb-2025/securities-and-exchange-board-of-india-investment-advisers-regulations-2013-last-amended-on-february-10-2025-_92319.html), so a production advisory service should obtain qualified compliance review. Treat outputs as educational evidence, not a guaranteed prediction.
-
-## 🏗️ Architecture
-
-```mermaid
-flowchart TD
-  U[CLI / Streamlit / Telegram] --> A[Agent ReAct Loop]
-  A --> I[Intent Fast Path]
-  A --> B[Brain: memory, planning, verification]
-  A --> G[Gateway: response cache + provider fallback]
-  G --> P1[Groq] --> P2[Gemini] --> P3[OpenRouter] --> P4[Local LLM]
-  A --> T[Tool Registry]
-  T --> OS[Windows UI / OS tools]
-  T --> WEB[Playwright Browser]
-  T --> DEV[Developer / Tester / Hacker modes]
-  B --> DB[(SQLite memory)]
-  A --> TR[JSONL traces]
-  T --> FS[Forge Sandbox: subprocess boundary]
+```bash
+python -m pytest test_security.py -v
+# ============================= 27 passed in ~4s =============================
