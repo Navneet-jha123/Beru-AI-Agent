@@ -1,0 +1,9 @@
+{
+  "id": "89475aac723b",
+  "goal": "A Python script that prints \"hello from beru\" when executed.",
+  "provider": "groq",
+  "files": [
+    "main.py"
+  ],
+  "status": "proposal_only"
+}

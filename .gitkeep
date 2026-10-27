@@ -1,0 +1,4 @@
+New-Item -ItemType File -Path "workspace\forged_tools\.gitkeep" -Force
+New-Item -ItemType File -Path "workspace\traces\.gitkeep" -Force
+New-Item -ItemType File -Path "workspace\benchmarks\.gitkeep" -Force
+New-Item -ItemType File -Path "workspace\snapshots\.gitkeep" -Force

@@ -1,0 +1,58 @@
+{
+  "trendingtechheadlinesfetcher": {
+    "name": "trendingtechheadlinesfetcher",
+    "description": "Fetches top 10 trending tech headlines and formats them into a Markdown file.",
+    "file": "C:\\course Projects\\AI Agent\\workspace\\forged_tools\\trendingtechheadlinesfetcher.py",
+    "schema": {
+      "type": "function",
+      "function": {
+        "name": "trendingtechheadlinesfetcher",
+        "description": "[Forged Tool] Fetches top 10 trending tech headlines and formats them into a Markdown file.",
+        "parameters": {
+          "type": "object"
+        }
+      }
+    },
+    "activated_at": "2026-10-23T08:56:34",
+    "backup": "C:\\course Projects\\AI Agent\\workspace\\forged_tools\\backups\\trendingtechheadlinesfetcher.20261023_085634.py"
+  },
+  "stock_chart_analyzer": {
+    "name": "stock_chart_analyzer",
+    "description": "Analyzes the latest chart for a user\u2011specified stock (India or US markets) and returns a structured technical\u2011analysis summary with probable short\u2011term market scenarios.",
+    "file": "C:\\course Projects\\AI Agent\\workspace\\forged_tools\\stock_chart_analyzer.py",
+    "schema": {
+      "type": "function",
+      "function": {
+        "name": "stock_chart_analyzer",
+        "description": "[Forged Tool] Analyzes the latest chart for a user\u2011specified stock (India or US markets) and returns a structured technical\u2011analysis summary with probable short\u2011term market scenarios.",
+        "parameters": {
+          "properties": {
+            "as_of": {
+              "description": "Optional cutoff date in YYYY\u2011MM\u2011DD; defaults to today.",
+              "format": "date",
+              "type": "string"
+            },
+            "market": {
+              "description": "Optional market specifier; auto\u2011detect if omitted.",
+              "enum": [
+                "India",
+                "US"
+              ],
+              "type": "string"
+            },
+            "stock_name": {
+              "description": "Ticker symbol or company name, e.g., \"TCS\" or \"AAPL\".",
+              "type": "string"
+            }
+          },
+          "required": [
+            "stock_name"
+          ],
+          "type": "object"
+        }
+      }
+    },
+    "activated_at": "2026-10-23T19:19:48",
+    "backup": "C:\\course Projects\\AI Agent\\workspace\\forged_tools\\backups\\stock_chart_analyzer.20261023_191948.py"
+  }
+}
