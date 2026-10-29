@@ -85,6 +85,24 @@ TOOL_BUNDLES = {
         "restore_from_quarantine", "sweep_directory_for_threats",
     ],
 
+    "medical": [
+    "parse_lab_report", "parse_lab_text", "calculate_bmi", "calculate_heart_score",
+    "calculate_qsofa", "calculate_curb65", "calculate_cha2ds2_vasc", "calculate_wells_pe",
+    "calculate_egfr_ckd_epi", "calculate_map", "calculate_anion_gap", "calculate_corrected_calcium",
+    "assess_metabolic_risk", "check_symptom_red_flags", "list_calculators",
+    "suggest_calculators", "run_calculator", "tool_specs"
+    ],
+    "reverse_engineering": [
+        "hash_file", "analyze_pe_header", "extract_strings", "find_indicators", "disassemble_bytes"
+    ],
+    # Reserved domain only: no sports data tools exist in this repository yet.
+        "sports": [
+        "fetch_football_standings", "fetch_team_form", "fetch_cricket_score", "fetch_nba_standings",
+        "calculate_elo_probability", "calculate_win_percentage", "calculate_points_per_game",
+        "calculate_expected_goals", "calculate_form_index",
+        "suggest_sports_tools", "run_sports_tool", "list_sports_tools",
+    ],
+
     "automation": [
         "schedule_task", "list_scheduled_tasks",
         "cancel_scheduled_task", "run_scheduled_task_now",
@@ -168,6 +186,27 @@ _BUNDLE_KEYWORDS = {
         "counterfactual", "adversarial", "critique", "goal drift",
         "decompose", "preference", "entity", "knowledge graph",
     ],
+    "medical": [
+    "medical", "lab report", "blood test", "hemoglobin", "cholesterol", "bmi",
+    "symptoms", "chest pain", "sepsis", "heart score", "ecg", "troponin",
+    "metabolic", "diabetes", "hypertension", "qsofa", "pneumonia", "curb-65",
+    "atrial fibrillation", "afib", "stroke", "pulmonary embolism", "pe",
+    "kidney", "renal", "creatinine", "egfr", "blood pressure", "map",
+    "anion gap", "acidosis", "calcium", "albumin", "calculator"
+    ],
+    "reverse_engineering": [
+        "reverse engineering", "disassemble", "disassembly", "pe header", "binary analysis",
+        "extract strings", "malware sample", "dll imports", "hash", "md5", "sha256",
+        "entropy", "ioc", "indicators", "url", "registry key"
+    ],
+        "sports": [
+        "sports", "score", "match", "football", "soccer", "cricket", "nba",
+        "basketball", "premier league", "la liga", "standings", "table",
+        "elo", "win probability", "win rate", "form", "recent results",
+        "xg", "expected goals", "points per game", "ppg", "league",
+        "athlete", "team", "tournament", "ipl", "world cup", "test match"
+    ],
+    
 }
 
 
@@ -196,6 +235,10 @@ def classify_bundles(user_message: str, mode: str = "General") -> List[str]:
         bundles.add("tester")
     elif mode_key == "hacker":
         bundles.add("hacker")
+    elif mode_key == "medical":
+        bundles.add("medical")
+    elif mode_key == "reverse engineering":
+        bundles.add("reverse_engineering")
 
     tokens = _tokenize(user_message)
     raw_lower = (user_message or "").lower()

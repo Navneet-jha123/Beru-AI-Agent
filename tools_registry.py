@@ -95,6 +95,17 @@ from modes.malware_scanner import (
     quarantine_file, list_quarantine, restore_from_quarantine,
     delete_quarantined_file, sweep_directory_for_threats,
 )
+from modes.medical import (
+    calculate_bmi, calculate_heart_score, calculate_qsofa, calculate_curb65,
+    calculate_cha2ds2_vasc, calculate_wells_pe, calculate_egfr_ckd_epi,
+    calculate_map, calculate_anion_gap, calculate_corrected_calcium,
+    assess_metabolic_risk, check_symptom_red_flags, parse_lab_report,
+    parse_lab_text, list_calculators, suggest_calculators, run_calculator, tool_specs
+)
+from modes.reverse_engineering import (
+    hash_file, analyze_pe_header, extract_strings, find_indicators, disassemble_bytes
+)
+from modes.reverse_engineering import analyze_pe_header, disassemble_bytes, extract_strings
 from modes.projects import (
     create_project,
     list_projects,
@@ -103,7 +114,13 @@ from modes.projects import (
     add_project_file,
     get_project_context,
 )
-
+from modes.sports import (
+    SPORTS_CALCULATORS, SPORTS_FETCHERS,
+    fetch_football_standings, fetch_team_form, fetch_cricket_score, fetch_nba_standings,
+    calculate_elo_probability, calculate_win_percentage, calculate_points_per_game,
+    calculate_expected_goals, calculate_form_index,
+    suggest_sports_tools, run_sports_tool, list_sports_tools,
+)
 from typing import Any, Callable, Dict, List, Optional
 
 # --------------------------------------------------------------------------- #
@@ -199,6 +216,14 @@ BASE_TOOLS: Dict[str, Callable] = {
     "analyze_intraday_momentum": analyze_intraday_momentum,
     "analyze_30m_swing_momentum": analyze_30m_swing_momentum,
     "synthesize_market_verdict": synthesize_market_verdict,
+
+    # Local-only analysis helpers. The agent exposes these only in their matching private mode.
+    "analyze_pe_header": analyze_pe_header,
+    "extract_strings": extract_strings,
+    "disassemble_bytes": disassemble_bytes,
+    "parse_lab_report": parse_lab_report,
+    "calculate_bmi": calculate_bmi,
+    "check_symptom_red_flags": check_symptom_red_flags,
 
     # Malware Scanner (Features 36-40)
     "check_hash_reputation": check_hash_reputation,
@@ -349,6 +374,39 @@ BASE_TOOLS: Dict[str, Callable] = {
     "click_element_with_verification": click_element_with_verification,
     "auto_fill_form": auto_fill_form,
     "detect_screen_hotspots": detect_screen_hotspots,
+    #medical
+    "parse_lab_report": parse_lab_report,
+    "parse_lab_text": parse_lab_text,
+    "calculate_bmi": calculate_bmi,
+    "calculate_heart_score": calculate_heart_score,
+    "calculate_qsofa": calculate_qsofa,
+    "calculate_curb65": calculate_curb65,
+    "calculate_cha2ds2_vasc": calculate_cha2ds2_vasc,
+    "calculate_wells_pe": calculate_wells_pe,
+    "calculate_egfr_ckd_epi": calculate_egfr_ckd_epi,
+    "calculate_map": calculate_map,
+    "calculate_anion_gap": calculate_anion_gap,
+    "calculate_corrected_calcium": calculate_corrected_calcium,
+    "assess_metabolic_risk": assess_metabolic_risk,
+    "check_symptom_red_flags": check_symptom_red_flags,
+    "list_calculators": list_calculators,
+    "suggest_calculators": suggest_calculators,
+    "run_calculator": run_calculator,
+    "tool_specs": tool_specs,
+
+    # Sports Analytics (local calculators + free-tier fetchers)
+    "fetch_football_standings": fetch_football_standings,
+    "fetch_team_form": fetch_team_form,
+    "fetch_cricket_score": fetch_cricket_score,
+    "fetch_nba_standings": fetch_nba_standings,
+    "calculate_elo_probability": calculate_elo_probability,
+    "calculate_win_percentage": calculate_win_percentage,
+    "calculate_points_per_game": calculate_points_per_game,
+    "calculate_expected_goals": calculate_expected_goals,
+    "calculate_form_index": calculate_form_index,
+    "suggest_sports_tools": suggest_sports_tools,
+    "run_sports_tool": run_sports_tool,
+    "list_sports_tools": list_sports_tools,
 }
 
 BASE_TOOL_SCHEMAS: List[Dict[str, Any]] = [
@@ -501,7 +559,149 @@ BASE_TOOL_SCHEMAS: List[Dict[str, Any]] = [
     {"type": "function", "function": {"name": "restore_from_quarantine", "description": "Moves a quarantined file back to its original location, unmodified.", "parameters": {"type": "object", "properties": {"quarantined_name": {"type": "string"}}, "required": ["quarantined_name"]}}},
     {"type": "function", "function": {"name": "sweep_directory_for_threats", "description": "Scans every file in a folder (e.g. Downloads) with the heuristic scanner; auto-quarantines anything over the risk threshold and reports a summary.", "parameters": {"type": "object", "properties": {"directory": {"type": "string"}, "recursive": {"type": "boolean", "default": True}, "auto_quarantine_threshold": {"type": "integer", "default": 60}}, "required": ["directory"]}}},
 
+
+    {"type": "function", "function": {"name": "analyze_pe_header", "description": "LOCAL ONLY: Parse a bounded Windows PE header/import table. Never executes or uploads the file. Available only in Reverse Engineering mode.", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]}}},
+    {"type": "function", "function": {"name": "extract_strings", "description": "LOCAL ONLY: Extract bounded printable ASCII/UTF-16LE strings from a file; never executes or uploads it. Available only in Reverse Engineering mode.", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "min_length": {"type": "integer", "minimum": 4, "maximum": 64, "default": 4}}, "required": ["file_path"]}}},
+    {"type": "function", "function": {"name": "disassemble_bytes", "description": "LOCAL ONLY: Disassemble at most 64 KiB of caller-supplied hex bytes in memory; never executes or uploads the bytes. Available only in Reverse Engineering mode.", "parameters": {"type": "object", "properties": {"hex_string": {"type": "string", "maxLength": 131072}, "architecture": {"type": "string", "enum": ["x86", "x86_32", "x64", "x86_64", "arm", "arm64", "aarch64"], "default": "x86"}}, "required": ["hex_string"]}}},
+    {"type": "function", "function": {"name": "parse_lab_report", "description": "LOCAL ONLY: Extract selected lab values from up to 40 pages of a local text-based PDF. Not diagnosis or medical advice; unavailable outside Medical mode.", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]}}},
+    {"type": "function", "function": {"name": "calculate_bmi", "description": "Calculate adult BMI locally as a screening measure only; not a diagnosis or medical advice. Available only in Medical mode.", "parameters": {"type": "object", "properties": {"weight_kg": {"type": "number", "exclusiveMinimum": 0}, "height_m": {"type": "number", "exclusiveMinimum": 0}}, "required": ["weight_kg", "height_m"]}}},
+    {"type": "function", "function": {"name": "check_symptom_red_flags", "description": "LOCAL ONLY: Deterministic red-flag phrase check; does not diagnose or rule out emergencies. Available only in Medical mode.", "parameters": {"type": "object", "properties": {"symptoms": {"type": "string", "maxLength": 5000}}, "required": ["symptoms"]}}},
+    # AgentMD meta-tools: used by the agent to discover and run clinical calculators.
+    {"type": "function", "function": {
+        "name": "list_calculators",
+        "description": "LOCAL ONLY: List all available clinical calculators (HEART, qSOFA, CURB-65, etc.).",
+        "parameters": {"type": "object", "properties": {}, "required": []}
+    }},
+    {"type": "function", "function": {
+        "name": "suggest_calculators",
+        "description": "LOCAL ONLY: Given a clinical note, return the top matching calculators to use. Call this BEFORE extracting parameters.",
+        "parameters": {"type": "object", "properties": {
+            "clinical_text": {"type": "string"},
+            "top_k": {"type": "integer", "default": 3}
+        }, "required": ["clinical_text"]}
+    }},
+    {"type": "function", "function": {
+        "name": "run_calculator",
+        "description": "LOCAL ONLY: Execute a clinical calculator by name. All math runs locally.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string", "description": "Calculator name, e.g. 'calculate_heart_score'"}
+        }, "additionalProperties": True, "required": ["name"]}
+    }},
+    {"type": "function", "function": {
+        "name": "tool_specs",
+        "description": "LOCAL ONLY: Returns the JSON schema specs for every registered calculator. Used for dynamic tool discovery.",
+        "parameters": {"type": "object", "properties": {}, "required": []}
+    }},
+    {"type": "function", "function": {
+        "name": "parse_lab_text",
+        "description": "LOCAL ONLY: Extract supported lab values from raw text (e.g. pasted lab report).",
+        "parameters": {"type": "object", "properties": {
+            "text": {"type": "string", "maxLength": 500000}
+        }, "required": ["text"]}
+    }},
+        # Sports Analytics (local calculators + free-tier fetchers)
+    {"type": "function", "function": {
+        "name": "fetch_football_standings",
+        "description": "Fetch top-10 football league table from football-data.org. Requires FOOTBALL_DATA_API_KEY.",
+        "parameters": {"type": "object", "properties": {
+            "competition_code": {"type": "string", "default": "PL", "description": "PL, PD, SA, BL1, FL1, CL"}
+        }, "required": []}
+    }},
+    {"type": "function", "function": {
+        "name": "fetch_team_form",
+        "description": "Fetch recent W/D/L results for a football team. Requires FOOTBALL_DATA_API_KEY.",
+        "parameters": {"type": "object", "properties": {
+            "team_name": {"type": "string"},
+            "last_n": {"type": "integer", "default": 5, "minimum": 1, "maximum": 10}
+        }, "required": ["team_name"]}
+    }},
+    {"type": "function", "function": {
+        "name": "fetch_cricket_score",
+        "description": "Fetch live cricket matches or one match status. Requires CRICBUZZ_RAPIDAPI_KEY.",
+        "parameters": {"type": "object", "properties": {
+            "match_id": {"type": "string", "default": ""}
+        }, "required": []}
+    }},
+    {"type": "function", "function": {
+        "name": "fetch_nba_standings",
+        "description": "Fetch NBA standings by conference. Requires BALLDONTLIE_API_KEY.",
+        "parameters": {"type": "object", "properties": {}, "required": []}
+    }},
+    {"type": "function", "function": {
+        "name": "calculate_elo_probability",
+        "description": "LOCAL ONLY: Calculate Elo expected score for team A (home) vs team B.",
+        "parameters": {"type": "object", "properties": {
+            "elo_a": {"type": "number"},
+            "elo_b": {"type": "number"},
+            "home_advantage": {"type": "number", "default": 100.0}
+        }, "required": ["elo_a", "elo_b"]}
+    }},
+    {"type": "function", "function": {
+        "name": "calculate_win_percentage",
+        "description": "LOCAL ONLY: Win rate + points rate + form category from W/D/L record.",
+        "parameters": {"type": "object", "properties": {
+            "wins": {"type": "integer"},
+            "draws": {"type": "integer"},
+            "losses": {"type": "integer"}
+        }, "required": ["wins", "draws", "losses"]}
+    }},
+    {"type": "function", "function": {
+        "name": "calculate_points_per_game",
+        "description": "LOCAL ONLY: Points per game with season-pace extrapolation.",
+        "parameters": {"type": "object", "properties": {
+            "points": {"type": "integer"},
+            "games": {"type": "integer"}
+        }, "required": ["points", "games"]}
+    }},
+    {"type": "function", "function": {
+        "name": "calculate_expected_goals",
+        "description": "LOCAL ONLY: xG for/against per match and xG difference.",
+        "parameters": {"type": "object", "properties": {
+            "xg_for": {"type": "number"},
+            "xg_against": {"type": "number"},
+            "matches": {"type": "integer"}
+        }, "required": ["xg_for", "xg_against", "matches"]}
+    }},
+    {"type": "function", "function": {
+        "name": "calculate_form_index",
+        "description": "LOCAL ONLY: Recency-weighted form score from a W/D/L string (oldest to newest).",
+        "parameters": {"type": "object", "properties": {
+            "results": {"type": "string", "description": "e.g. 'WWDLL'"}
+        }, "required": ["results"]}
+    }},
+    {"type": "function", "function": {
+        "name": "suggest_sports_tools",
+        "description": "LOCAL ONLY: Given a sports query, suggest which calculators/fetchers to use.",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string"},
+            "top_k": {"type": "integer", "default": 3, "minimum": 1, "maximum": 10}
+        }, "required": ["query"]}
+    }},
+    {"type": "function", "function": {
+        "name": "run_sports_tool",
+        "description": "LOCAL ONLY: Execute a sports calculator or fetcher by name.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string", "description": "e.g. 'elo_probability' or 'calculate_elo_probability'"}
+        }, "additionalProperties": True, "required": ["name"]}
+    }},
+    {"type": "function", "function": {
+        "name": "list_sports_tools",
+        "description": "LOCAL ONLY: List every available sports calculator and fetcher.",
+        "parameters": {"type": "object", "properties": {}, "required": []}
+    }},
+
 ]
+# Auto-generate medical calculator schemas from the registry
+from modes.medical import tool_specs as _med_specs
+for _spec in _med_specs():
+    BASE_TOOL_SCHEMAS.append({
+        "type": "function",
+        "function": {
+            "name": _spec["name"],
+            "description": f"LOCAL ONLY: {_spec['description']} Not a diagnosis. Available only in Medical mode.",
+            "parameters": _spec["parameters"],
+        }
+    })
 
 
 def get_live_tools() -> Dict[str, Callable]:

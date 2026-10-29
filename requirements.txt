@@ -1,3 +1,8 @@
+# Local static analysis helpers (these never execute analyzed files)
+pefile>=2023.2.7,<2027.0
+capstone>=5.0.0,<6.0
+pdfplumber>=0.11.0,<1.0
+
 # Core LLM providers
 groq>=0.11.0,<1.0
 google-genai>=0.3.0,<1.0

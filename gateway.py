@@ -17,6 +17,7 @@ import re
 import threading
 import time
 import uuid
+from contextvars import copy_context
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from config import (
@@ -494,7 +495,7 @@ def _call_local(messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, A
 
 
 
-def ask_ai_from_provider(provider: str, messages: List[Dict[str, Any]], temperature: float = 0.2) -> UnifiedMessage:
+def _ask_ai_from_provider_unredacted(provider: str, messages: List[Dict[str, Any]], temperature: float = 0.2) -> UnifiedMessage:
     """Call one provider only; no fallback and no shared response cache."""
     provider = (provider or "").strip().casefold()
     clean_messages = _sanitize_messages(messages)
@@ -514,6 +515,18 @@ def ask_ai_from_provider(provider: str, messages: List[Dict[str, Any]], temperat
         return _call_local(clean_messages, None, temperature=temperature)
     raise ValueError(f"Unsupported provider: {provider}")
 
+
+def ask_ai_from_provider(provider: str, messages: List[Dict[str, Any]], temperature: float = 0.2) -> UnifiedMessage:
+    """PII-scrubbed direct provider call; local-only requests reject cloud providers."""
+    from privacy_gateway import (PrivacyGateway, current_privacy_gateway, is_local_only,
+                                 local_endpoint_is_loopback)
+    gateway = current_privacy_gateway() or PrivacyGateway()
+    if is_local_only() and provider.strip().casefold() != "local":
+        return UnifiedMessage("Blocked: local-only privacy mode forbids cloud providers.", provider="local_error")
+    if is_local_only() and not local_endpoint_is_loopback(LOCAL_LLM_URL):
+        return UnifiedMessage("Blocked: local-only mode requires LOCAL_LLM_URL to use localhost or a loopback IP.", provider="local_error")
+    response = _ask_ai_from_provider_unredacted(provider, gateway.scrub_messages(messages), temperature)
+    return gateway.rehydrate_message(response)
 
 def _discover_gemini_model() -> Optional[str]:
     """Ask the API which Flash models this key can use and pick the newest stable one."""
@@ -539,7 +552,7 @@ def _discover_gemini_model() -> Optional[str]:
 # --------------------------------------------------------------------------- #
 # Master Router
 # --------------------------------------------------------------------------- #
-def ask_ai(
+def _ask_ai_unredacted(
     messages: List[Dict[str, Any]],
     tools: Optional[List[Dict[str, Any]]] = None,
     available_tools_dict: Optional[Dict[str, Any]] = None,
@@ -570,9 +583,14 @@ def ask_ai(
 
     errors = []
 
-    # 0.5. LOCAL-ONLY PRIVACY MODE — never touch the cloud
-    import os as _os_gw
-    if _os_gw.getenv("BERU_PRIVACY_MODE", "").lower() == "local_only":
+    # 0.5. LOCAL-ONLY PRIVACY MODE — never touch the cloud.
+    from privacy_gateway import is_local_only, local_endpoint_is_loopback
+    if is_local_only():
+        if not local_endpoint_is_loopback(LOCAL_LLM_URL):
+            return UnifiedMessage(
+                content="Local-only mode blocked the request because LOCAL_LLM_URL is not a localhost/loopback endpoint.",
+                tool_calls=[], provider="local_error",
+            )
         try:
             msg = _call_local(messages, tools, temperature=temperature)
             if not msg.tool_calls and available_tools_dict:
@@ -683,6 +701,39 @@ def ask_ai(
     )
 
 
+def ask_ai(
+    messages: List[Dict[str, Any]],
+    tools: Optional[List[Dict[str, Any]]] = None,
+    available_tools_dict: Optional[Dict[str, Any]] = None,
+    temperature: float = 0.2,
+    use_cache: bool = True,
+    stream_callback: Optional[Callable[[str], None]] = None,
+) -> UnifiedMessage:
+    """Scrub PII before any model call and restore it only in the returned result."""
+    from privacy_gateway import (PrivacyGateway, current_privacy_gateway, is_local_only,
+                                 local_endpoint_is_loopback)
+    gateway = current_privacy_gateway() or PrivacyGateway()
+    local_only = is_local_only()
+    if local_only and not local_endpoint_is_loopback(LOCAL_LLM_URL):
+        return UnifiedMessage(
+            "Local-only mode blocked the request because LOCAL_LLM_URL is not a localhost/loopback endpoint.",
+            provider="local_error",
+        )
+    safe_messages = gateway.scrub_messages(messages)
+    # PII placeholder maps are request-scoped; caching could map a later user's token to the wrong value.
+    response = _ask_ai_unredacted(
+        safe_messages, tools=tools, available_tools_dict=available_tools_dict,
+        temperature=temperature, use_cache=False, stream_callback=None,
+    )
+    response = gateway.rehydrate_message(response)
+    if stream_callback and response.content:
+        try:
+            stream_callback(response.content)
+        except Exception:
+            pass
+    return response
+
+
 async def async_ask_ai(
     messages: List[Dict[str, Any]],
     tools: Optional[List[Dict[str, Any]]] = None,
@@ -690,5 +741,8 @@ async def async_ask_ai(
     temperature: float = 0.2,
 ) -> UnifiedMessage:
     """Async wrapper around ask_ai to run non-blockingly."""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, ask_ai, messages, tools, available_tools_dict, temperature)
+    loop = asyncio.get_running_loop()
+    context = copy_context()
+    return await loop.run_in_executor(
+        None, context.run, ask_ai, messages, tools, available_tools_dict, temperature
+    )

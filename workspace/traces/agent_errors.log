@@ -1,18 +1,4 @@
-2026-10-23 23:52:51,869 [ERROR] Exception in callback _ProactorBasePipeTransport._call_connection_lost()
-handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
-Traceback (most recent call last):
-  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
-    self._context.run(self._callback, *self._args)
-    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Python314\Lib\asyncio\proactor_events.py", line 166, in _call_connection_lost
-    self._sock.shutdown(socket.SHUT_RDWR)
-    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
-ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
-2026-10-24 00:45:02,842 [ERROR] HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: SBI.NS"}}}
-2026-10-24 00:45:03,508 [ERROR] $SBI.NS: No data found, symbol may be delisted
-2026-10-24 00:45:05,684 [ERROR] HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: SBI.NS"}}}
-2026-10-24 00:45:06,299 [ERROR] $SBI.NS: No data found, symbol may be delisted
-2026-10-24 00:45:51,720 [ERROR] $SBI.NS: No data found, symbol may be delisted
-2026-10-24 00:45:52,213 [ERROR] $SBI.NS: No data found, symbol may be delisted
-2026-10-24 00:46:18,171 [ERROR] $SBI.NS: No data found, symbol may be delisted
-2026-10-24 00:46:24,125 [ERROR] $SBI.NS: No data found, symbol may be delisted
+2026-10-27 19:05:54,493 [ERROR] HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: NIFTY_50.BO"}}}
+2026-10-27 19:05:56,431 [ERROR] $NIFTY_50.BO: No data found, symbol may be delisted
+2026-10-27 19:06:12,878 [ERROR] HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: NIFTY_50.NS"}}}
+2026-10-27 19:06:13,820 [ERROR] $NIFTY_50.NS: No data found, symbol may be delisted

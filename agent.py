@@ -34,6 +34,7 @@ from modes.projects import get_active_project_context
 
 from config import MAX_TOOL_ROUNDS, PRIMARY_MODEL, TOOL_RESULT_CAP, TRACES_DIR
 from gateway import ToolCall, ask_ai
+from privacy_gateway import privacy_context
 from tools_registry import get_live_schemas, get_live_tools
 
 
@@ -112,6 +113,39 @@ You are a Principal QA Engineer and Application Security Auditor.
 - Test rigorously. Provide concrete reproduction steps and suggested diff fixes for any bug discovered.
 """,
 
+    "Medical": BASE_SYSTEM_PROMPT + """
+MODE: CLINICAL DECISION SUPPORT (AgentMD-style).
+You are NOT a diagnostician. You are a calculator router.
+
+WORKFLOW (follow in order):
+1. Call `suggest_calculators(clinical_text)` to find which calculators apply.
+2. Read each calculator's required parameters from the suggestion output.
+3. Extract those parameters from the user's note. If a parameter is missing, ASK the user — never guess.
+4. Call `run_calculator(name, **params)` to execute the local math.
+5. Interpret the result as evidence-based risk stratification, not a diagnosis.
+6. ALWAYS append: "This is not medical advice. Consult a licensed clinician."
+
+RULES:
+- If `check_symptom_red_flags` fires, tell the user to seek emergency care immediately.
+- Never invent lab values, vitals, or risk factors.
+- If the calculator returns an input error, report it honestly and ask for the correct value.
+""",
+
+    "Sports": BASE_SYSTEM_PROMPT + """
+MODE: SPORTS ANALYTICS (Local calculators + free-tier data fetchers).
+- Use `suggest_sports_tools` to find the right tool for a query.
+- Use the fetchers (`fetch_football_standings`, `fetch_team_form`, `fetch_cricket_score`, `fetch_nba_standings`) for live data.
+- Use the local calculators (`calculate_elo_probability`, `calculate_win_percentage`, etc.) for offline math.
+- NEVER present a probability as a guaranteed outcome. Say "descriptive statistic, not a prediction."
+- ALWAYS append: "This is not betting advice. Statistics are descriptive, not predictive."
+""",
+
+    "Reverse Engineering": BASE_SYSTEM_PROMPT + """
+MODE: REVERSE ENGINEERING (Offline static analysis only).
+- Analyze files only with the local read-only header/string/disassembly tools exposed for this mode.
+- Never execute or upload a sample. Describe indicators as evidence, not proof of maliciousness.
+- The model provider is forced to the configured loopback local endpoint; if it is unavailable, fail closed.
+""",
     "Hacker": BASE_SYSTEM_PROMPT + """
 MODE: HACKER (Ethical Security & OSINT Master).
 You are an Elite Offensive-Defensive Security Researcher.
@@ -164,6 +198,16 @@ def _extract_target_from_args(tool_name: str, args_dict: Dict[str, Any]) -> Opti
     return None
 
 
+def _normalize_target(target: str) -> str:
+    """Strip protocol and www so confirmations match regardless of how the user types it."""
+    t = target.strip().casefold()
+    for prefix in ("https://", "http://"):
+        if t.startswith(prefix):
+            t = t[len(prefix):]
+    if t.startswith("www."):
+        t = t[4:]
+    return t.rstrip("/")
+
 def _user_has_confirmed_scan(
     prompt: str,
     history: Optional[List[Dict[str, Any]]],
@@ -172,8 +216,19 @@ def _user_has_confirmed_scan(
     """Require an explicit one-time confirmation in the current user message."""
     if not target:
         return False
-    required = f"confirm scan: {target.strip().casefold()}"
-    return required in (prompt or "").casefold()
+    normalized_target = _normalize_target(target)
+    required = f"confirm scan: {normalized_target}"
+    # Normalize the prompt's target portion too
+    prompt_lower = (prompt or "").casefold()
+    # Extract the part after "confirm scan:" if it exists
+    if "confirm scan:" in prompt_lower:
+        idx = prompt_lower.index("confirm scan:")
+        user_target = prompt_lower[idx + len("confirm scan:"):].strip()
+        # Remove trailing punctuation
+        user_target = user_target.rstrip(".,;:!?")
+        normalized_user = _normalize_target(user_target)
+        return normalized_user == normalized_target
+    return False
 
 # --------------------------------------------------------------------------- #
 # Dangerous Code Detector (Pre-Execution Guard)
@@ -317,7 +372,7 @@ def _invoke_tool(tool_name: str, raw_args: Any, tools_dict: Dict[str, Callable])
 # --------------------------------------------------------------------------- #
 # Master Agent Run Loop
 # --------------------------------------------------------------------------- #
-def run_agent(
+def _run_agent_impl(
     prompt: str,
     mode: str = "General",
     history: Optional[List[Dict[str, Any]]] = None,
@@ -331,13 +386,23 @@ def run_agent(
     trace_id = uuid.uuid4().hex[:8]
     tracer = SessionTracer(trace_id, prompt, mode)
 
-    # 1. Setup Tools & Schemas
-    tools_dict = get_live_tools()
-
-    # Tool retriever: sends only the top-K most relevant schemas to the LLM.
-    # This is what makes BERU scale past the 128-tool provider limit.
+    # 1. Setup Tools & Schemas. Sensitive modes get a fixed allowlist: no browser,
+    # forged, memory, file-write, or other network-capable tools are exposed.
     from modes.tool_retriever import retrieve_tools
-    schemas = retrieve_tools(prompt, mode, top_k=20)
+    private_tool_sets = {
+        "medical": {"parse_lab_report", "calculate_bmi", "check_symptom_red_flags"},
+        "reverse engineering": {"analyze_pe_header", "extract_strings", "disassemble_bytes"},
+    }
+    private_tools = private_tool_sets.get((mode or "").strip().casefold())
+    tools_dict = get_live_tools()
+    if private_tools is not None:
+        tools_dict = {name: fn for name, fn in tools_dict.items() if name in private_tools}
+        safe_schemas = [schema for schema in get_live_schemas()
+                        if (schema.get("function") or {}).get("name") in private_tools]
+        schemas = retrieve_tools(prompt, mode, top_k=20, all_schemas=safe_schemas)
+    else:
+        # Tool retriever: sends only the top-K most relevant schemas to the LLM.
+        schemas = retrieve_tools(prompt, mode, top_k=20)
 
     # --- Deterministic fast paths (no LLM round-trip) ---
     simple = prompt.strip()
@@ -398,12 +463,17 @@ def run_agent(
 
     # 2. Setup Persona & Working Memory
     system_text = PERSONA_PROMPTS.get(mode, PERSONA_PROMPTS["General"])
-    continuity = get_cross_session_context()          # ← ADD
-    if continuity:                                     # ← ADD
+    private_mode = private_tools is not None
+    # DEMO FALLBACK: Allow cloud models in Medical mode if Ollama is missing.
+    # The clinical calculators still run 100% locally.
+    if private_mode and mode.casefold() == "medical":
+        os.environ["BERU_PRIVACY_MODE"] = ""  # Allow cloud fallback for the demo
+    continuity = "" if private_mode else get_cross_session_context()
+    if continuity:
         system_text += "\n\nRECENT SESSION CONTEXT:\n" + continuity[:2500]
     system_text += f"\n\nCURRENT LOCAL DATE/TIME: {time.strftime('%A, %d %B %Y, %I:%M %p')}. Use this when asked for the date or time."
-    # Ingest lessons
-    lessons = recall_lessons(prompt)
+    # Sensitive medical/binary tasks do not read or write persistent memory.
+    lessons = [] if private_mode else recall_lessons(prompt)
     if lessons:
         system_text += "\n\nRECALLED HISTORICAL LESSONS:\n" + "\n".join(f"- {l}" for l in lessons)
 
@@ -534,8 +604,8 @@ def run_agent(
 
             tracer.log_finish(final_answer)
             try:
-                # Episodic memory is disabled until the user opts in through privacy settings.
-                if len(prompt) > 100:
+                # Sensitive local-only modes never persist prompt or answer-derived memory.
+                if not private_mode and len(prompt) > 100:
                     # Pass the *actual* verification outcome instead of hardcoded True
                     reflection = generate_self_reflection(prompt, final_answer, ok)
                     if reflection:
@@ -690,3 +760,25 @@ def run_agent(
     final_fallback = "Reached maximum tool execution rounds without a terminal answer."
     tracer.log_finish(final_fallback)
     return final_fallback
+
+
+def run_agent(
+    prompt: str,
+    mode: str = "General",
+    history: Optional[List[Dict[str, Any]]] = None,
+    on_thought: Optional[Callable[[str], None]] = None,
+    on_tool_call: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+    on_tool_result: Optional[Callable[[str, str], None]] = None,
+) -> str:
+    """Public API; privacy state is isolated per request and restored afterward."""
+    local_mode = (mode or "").strip().casefold() == "reverse engineering"
+    with privacy_context(local_only=local_mode):
+        answer = _run_agent_impl(
+            prompt, mode=mode, history=history, on_thought=on_thought,
+            on_tool_call=on_tool_call, on_tool_result=on_tool_result,
+        )
+    if (mode or "").strip().casefold() == "medical":
+        disclaimer = "This is not medical advice or a diagnosis. Review health concerns with a licensed clinician."
+        if disclaimer.casefold() not in answer.casefold():
+            answer = answer.rstrip() + "\n\n" + disclaimer
+    return answer
