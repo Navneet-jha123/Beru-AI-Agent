@@ -38,10 +38,9 @@ _lock = threading.Lock()
 # --------------------------------------------------------------------------- #
 from contextlib import contextmanager
 
-def _get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(BRAIN_DB_PATH), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+def _get_conn():
+    """Return a closing transaction context, not SQLite's non-closing context manager."""
+    return _db()
 
 
 @contextmanager

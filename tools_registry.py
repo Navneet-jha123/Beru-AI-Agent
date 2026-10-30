@@ -120,7 +120,7 @@ from modes.sports import (
     calculate_expected_goals, calculate_form_index,
     suggest_sports_tools, run_sports_tool, list_sports_tools,
 )
-from modes.data_analyst import query_csv, query_sqlite_db, analyze_excel
+from modes.data_analyst import query_csv, query_sqlite_db, analyze_excel, profile_csv
 from openapi_connector import ingest_openapi_spec, execute_api_request
 from modes.system_admin import get_top_processes, restart_service
 from vision_uia import detect_screen_elements_yolo, inspect_screen_hybrid
@@ -410,6 +410,7 @@ BASE_TOOLS: Dict[str, Callable] = {
     "list_sports_tools": list_sports_tools,
     # Local data engine (read-only)
     "query_csv": query_csv,
+    "profile_csv": profile_csv,
     "query_sqlite_db": query_sqlite_db,
     "analyze_excel": analyze_excel,
     # Explicitly allowlisted API connector
@@ -708,6 +709,7 @@ BASE_TOOL_SCHEMAS: List[Dict[str, Any]] = [
 
 BASE_TOOL_SCHEMAS.extend([
     {"type": "function", "function": {"name": "query_csv", "description": "LOCAL READ-ONLY: Run one DuckDB SELECT against a CSV/TSV file inside the project or workspace, exposed as table `data`. Result rows are capped.", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "sql_query": {"type": "string", "maxLength": 8000}}, "required": ["file_path", "sql_query"], "additionalProperties": False}}},
+    {"type": "function", "function": {"name": "profile_csv", "description": "LOCAL ONLY: Profile a bounded CSV/TSV file with row and missing-value counts, numeric summaries, IQR outlier screening, and common categories. Descriptive checks only; not forecasts or proof of data errors.", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "max_rows": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 10000}}, "required": ["file_path"], "additionalProperties": False}}},
     {"type": "function", "function": {"name": "query_sqlite_db", "description": "LOCAL READ-ONLY: Query a SQLite database inside the project or workspace using one SELECT/CTE. Mutations and pragmas are blocked; result rows are capped.", "parameters": {"type": "object", "properties": {"db_path": {"type": "string"}, "sql_query": {"type": "string", "maxLength": 8000}}, "required": ["db_path", "sql_query"], "additionalProperties": False}}},
     {"type": "function", "function": {"name": "analyze_excel", "description": "LOCAL READ-ONLY: Preview, profile, or list sheets in an .xlsx/.xlsm file inside the project or workspace. Formulas are not evaluated.", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "operation": {"type": "string", "enum": ["preview", "profile", "list_sheets"], "default": "preview"}, "sheet_name": {"type": "string", "default": ""}}, "required": ["file_path"], "additionalProperties": False}}},
     {"type": "function", "function": {"name": "ingest_openapi_spec", "description": "Load an OpenAPI 3.x JSON/YAML spec from a project/workspace file or an exact allowlisted HTTPS host. Returns operations for discovery. Specs remain in memory only.", "parameters": {"type": "object", "properties": {"url_or_file_path": {"type": "string", "maxLength": 2048}}, "required": ["url_or_file_path"], "additionalProperties": False}}},

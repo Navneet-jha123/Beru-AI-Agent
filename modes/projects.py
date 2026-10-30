@@ -9,6 +9,7 @@ import hashlib
 import sqlite3
 import threading
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -26,9 +27,20 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def _db():
+    """Commit/rollback and close a project database connection per operation."""
+    conn = _connect()
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
 def _init_db() -> None:
     WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
-    with _DB_LOCK, _connect() as conn:
+    with _DB_LOCK, _db() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS projects (
                 id TEXT PRIMARY KEY,
@@ -87,7 +99,7 @@ def create_project(name: str, goal: str) -> str:
         name = _safe_text(name, "name", 80)
         goal = _safe_text(goal, "goal", 2000)
         project_id = uuid.uuid4().hex[:12]
-        with _DB_LOCK, _connect() as conn:
+        with _DB_LOCK, _db() as conn:
             conn.execute("UPDATE projects SET active = 0 WHERE active = 1")
             conn.execute(
                 "INSERT INTO projects(id, name, goal, active) VALUES (?, ?, ?, 1)",
@@ -103,7 +115,7 @@ def create_project(name: str, goal: str) -> str:
 
 def list_projects() -> str:
     try:
-        with _DB_LOCK, _connect() as conn:
+        with _DB_LOCK, _db() as conn:
             rows = conn.execute(
                 "SELECT id, name, goal, active, created_at FROM projects ORDER BY created_at DESC LIMIT 100"
             ).fetchall()
@@ -120,7 +132,7 @@ def list_projects() -> str:
 def activate_project(project_id: str) -> str:
     project_id = (project_id or "").strip()
     try:
-        with _DB_LOCK, _connect() as conn:
+        with _DB_LOCK, _db() as conn:
             found = conn.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone()
             if not found:
                 return f"No project with id '{project_id}'."
@@ -136,7 +148,7 @@ def add_project_note(project_id: str, note: str) -> str:
     try:
         project_id = _safe_text(project_id, "project_id", 32)
         note = _safe_text(note, "note", 4000)
-        with _DB_LOCK, _connect() as conn:
+        with _DB_LOCK, _db() as conn:
             if not conn.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone():
                 return f"No project with id '{project_id}'."
             conn.execute("INSERT INTO project_notes(project_id, note) VALUES (?, ?)", (project_id, note))
@@ -161,7 +173,7 @@ def add_project_file(project_id: str, file_path: str) -> str:
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                 digest.update(chunk)
         stat = target.stat()
-        with _DB_LOCK, _connect() as conn:
+        with _DB_LOCK, _db() as conn:
             if not conn.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone():
                 return f"No project with id '{project_id}'."
             conn.execute(
@@ -178,7 +190,7 @@ def add_project_file(project_id: str, file_path: str) -> str:
 def get_project_context(project_id: str = "") -> str:
     """Return bounded project metadata; treat notes as untrusted user data."""
     try:
-        with _DB_LOCK, _connect() as conn:
+        with _DB_LOCK, _db() as conn:
             if project_id.strip():
                 project = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id.strip(),)).fetchone()
             else:

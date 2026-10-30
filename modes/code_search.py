@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterable
 
@@ -20,9 +21,20 @@ def _connect() -> sqlite3.Connection:
     return sqlite3.connect(str(DB_PATH), timeout=15)
 
 
+@contextmanager
+def _db():
+    """Commit/rollback and close a SQLite connection for every operation."""
+    conn = _connect()
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
 def _init_db() -> None:
     WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
-    with _connect() as conn:
+    with _db() as conn:
         conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS code_fts USING fts5(path UNINDEXED, content, tokenize='unicode61')")
 
 
@@ -65,7 +77,7 @@ def index_codebase(path: str = ".") -> str:
                 rows.append((rel, content))
             except (OSError, ValueError):
                 continue
-        with _connect() as conn:
+        with _db() as conn:
             conn.execute("DELETE FROM code_fts")
             conn.executemany("INSERT INTO code_fts(path, content) VALUES (?, ?)", rows)
         return f"Indexed {len(rows)} files locally. Content is stored in workspace/beru_code_search.db."
@@ -82,7 +94,7 @@ def search_code(query: str, limit: int = 10) -> str:
     limit = max(1, min(int(limit), 20))
     expression = " AND ".join('"' + term.replace('"', '""') + '"' for term in terms)
     try:
-        with _connect() as conn:
+        with _db() as conn:
             rows = conn.execute(
                 "SELECT path, snippet(code_fts, 1, '[', ']', ' … ', 12), bm25(code_fts) "
                 "FROM code_fts WHERE code_fts MATCH ? ORDER BY bm25(code_fts) LIMIT ?",

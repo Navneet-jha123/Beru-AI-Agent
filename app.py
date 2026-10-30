@@ -25,6 +25,7 @@ import inspect
 import json
 import os
 import time
+import uuid
 from html import escape
 from pathlib import Path
 from typing import Any, Callable
@@ -35,6 +36,12 @@ import streamlit as st
 # Original integration boundary: keep these project modules unchanged.
 from agent import run_agent
 from config import PRIMARY_MODEL, GEMINI_MODEL, TRACES_DIR, WORKSPACE_DIR
+from feedback import (
+    get_feedback_summary,
+    has_answer_feedback,
+    record_answer_feedback,
+    set_response_style_preference,
+)
 from forge import ACTIVE_FORGED_TOOLS, forge_new_tool
 from modes.developer import compile_to_exe, run_dev_command, run_test_suite
 from modes.hacker import (
@@ -46,6 +53,7 @@ from modes.hacker import (
 from modes.tester import audit_code_security
 from proactive_daemon import generate_system_health_briefing
 from tools_registry import get_live_schemas, get_live_tools
+from brain import get_tool_optimizer_report
 from modes import market_analyst as market_core
 
 st.set_page_config(
@@ -92,7 +100,7 @@ MODE_HINTS = {
     "Medical": "Lab extraction and simple calculations run locally. This is not diagnosis or medical advice.",
     "Reverse Engineering": "Inspect bounded files locally. Samples are never executed by these analysis tools.",
     "Sports": "Local calculators for Elo, form, win rate. Free-tier fetchers for live scores. Not betting advice.",
-    "Data Analyst": "Run read-only CSV, SQLite and Excel queries using your configured local model.",
+    "Data Analyst": "Profile local CSVs, then run read-only CSV, SQLite and Excel analysis.",
     "API": "Connect to reviewed OpenAPI operations on explicitly allowlisted hosts using your local model.",
 }
 PAGES = ["Assistant", "Stock explorer", "Create tools", "Developer workspace", "Website checks", "Activity history"]
@@ -621,6 +629,7 @@ def init_state() -> None:
         "beru_page": "Assistant", "beru_prompt_labels": {},
         "beru_activity": {}, "beru_quick_label": "", "beru_pending": False,
         "beru_theme_mode": system_theme(),
+        "beru_session_id": uuid.uuid4().hex,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -641,6 +650,7 @@ def reset_conversation() -> None:
     st.session_state.beru_prompt_labels = {}
     st.session_state.beru_activity = {}
     st.session_state.beru_pending = False
+    st.session_state.beru_session_id = uuid.uuid4().hex
     st.session_state.beru_page = "Assistant"
     st.session_state.pop("beru_agent_error", None)
 
@@ -832,6 +842,81 @@ def render_message(index: int, msg: dict[str, Any]) -> None:
         if activity and (activity["thoughts"] or activity["tools"]):
             with st.expander("What BERU did", expanded=False):
                 render_activity(activity)
+        if msg["role"] == "assistant":
+            render_answer_feedback(index, msg, activity or {})
+
+
+def render_answer_feedback(index: int, msg: dict[str, Any], activity: dict[str, Any]) -> None:
+    """Collect optional local feedback without storing prompt or answer text."""
+    session_id = st.session_state.beru_session_id
+    try:
+        already_submitted = has_answer_feedback(session_id, index)
+    except Exception:
+        already_submitted = False
+    if already_submitted:
+        st.caption("Thanks for helping improve BERU.")
+        return
+
+    mode = activity.get("mode", st.session_state.mode)
+    private_modes = {"medical", "reverse engineering", "data analyst", "api", "watchdog"}
+    with st.expander("Give feedback", expanded=False):
+        st.caption("Feedback is stored locally as a rating, issue category, and answer hash. The conversation text is not saved by this form.")
+        with st.form(key=f"beru_feedback_{session_id}_{index}"):
+            rating_label = st.radio(
+                "Was this answer useful?", ("Helpful", "Needs improvement"),
+                horizontal=True, key=f"beru_feedback_rating_{session_id}_{index}",
+            )
+            reason_label = st.selectbox(
+                "What should improve?",
+                ("No specific issue", "Accuracy", "Completeness", "Format", "Tool choice", "Speed", "Other"),
+                key=f"beru_feedback_reason_{session_id}_{index}",
+            )
+            style_label = "Keep current preference"
+            style_map = {
+                "Keep current preference": "keep",
+                "Concise answers": "concise",
+                "Detailed explanations": "detailed",
+                "Use bullet points": "bullets",
+                "Explain technical terms simply": "plain_language",
+                "Clear saved style preference": "clear",
+            }
+            if mode.casefold() not in private_modes:
+                style_label = st.selectbox(
+                    "Optional default style for future chats",
+                    tuple(style_map),
+                    key=f"beru_feedback_style_{session_id}_{index}",
+                )
+            submitted = st.form_submit_button("Send feedback", **wide(st.form_submit_button))
+        if submitted:
+            ratings = {"Helpful": "helpful", "Needs improvement": "not_helpful"}
+            reasons = {
+                "No specific issue": "none", "Accuracy": "accuracy",
+                "Completeness": "incomplete", "Format": "format",
+                "Tool choice": "tool_selection", "Speed": "slow", "Other": "other",
+            }
+            try:
+                record_answer_feedback(
+                    session_id, index, mode, ratings[rating_label], reasons[reason_label],
+                    str(msg.get("content", "")),
+                )
+            except Exception as exc:
+                error_details("Feedback couldn’t be saved.", exc)
+                return
+            preference_error = None
+            if mode.casefold() not in private_modes:
+                selected_style = style_map[style_label]
+                try:
+                    if selected_style == "clear":
+                        set_response_style_preference(None)
+                    elif selected_style != "keep":
+                        set_response_style_preference(selected_style)
+                except Exception as exc:
+                    preference_error = exc
+            if preference_error:
+                st.warning("Feedback was saved, but the response-style preference couldn’t be updated.")
+                st.caption(f"Preference error: {type(preference_error).__name__}")
+            else:
+                st.success("Feedback saved locally. Thanks for helping improve BERU.")
 
 
 def run_pending_request() -> None:
@@ -891,7 +976,9 @@ def run_pending_request() -> None:
         st.rerun()
     assistant_index = len(state.messages)
     state.messages.append({"role": "assistant", "content": response if isinstance(response, str) else str(response)})
-    state.beru_activity[assistant_index] = {"thoughts": thoughts_list, "tools": tools_list}
+    state.beru_activity[assistant_index] = {
+        "thoughts": thoughts_list, "tools": tools_list, "mode": state.mode,
+    }
     st.rerun()
 
 
@@ -1199,7 +1286,29 @@ def render_web_checks() -> None:
 
 def render_history() -> None:
     heading("Activity history", "Every step, in one place.",
-            "Open a saved session to see the events and tool data recorded by your existing logging system. These files are separate from the current chat.")
+            "Review local tool reliability, system health, user ratings, and metadata-only session timings.")
+    with st.expander("Agent performance and feedback", expanded=True):
+        st.caption("System health is a snapshot cached for up to 30 seconds. Tool reliability is cumulative; session traces include model, tool, and total response timings. Refresh this page to update.")
+        st.markdown("**System health snapshot**")
+        st.code(generate_system_health_briefing(), language="text")
+        st.markdown("**Tool success and failure counts**")
+        st.code(get_tool_optimizer_report(), language="text")
+        try:
+            summary = get_feedback_summary()
+            helpful_rate = (summary["helpful"] / summary["total"] * 100) if summary["total"] else None
+            rate_text = f"{helpful_rate:.1f}%" if helpful_rate is not None else "not enough feedback yet"
+            st.caption(
+                f"Answer ratings: {summary['total']} total · {summary['helpful']} helpful · "
+                f"{summary['not_helpful']} needs improvement · helpful rate {rate_text}. "
+                "Use the ratings as a review signal, not an automatic model-quality score."
+            )
+            if summary["reasons"]:
+                st.caption("Improvement categories: " + ", ".join(
+                    f"{reason.replace('_', ' ')} ({count})"
+                    for reason, count in sorted(summary["reasons"].items())
+                ))
+        except Exception as exc:
+            st.caption(f"Feedback metrics unavailable ({type(exc).__name__}).")
     try:
         trace_files = sorted(Path(TRACES_DIR).glob("*.jsonl"), key=os.path.getmtime, reverse=True)
     except OSError as exc:

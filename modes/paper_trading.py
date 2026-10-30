@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import sqlite3
 import threading
+from contextlib import contextmanager
 from config import WORKSPACE_DIR
 
 DB_PATH = WORKSPACE_DIR / "paper_trading.db"
@@ -27,9 +28,20 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def _db():
+    """Close the autocommit connection after each ledger operation."""
+    conn = _connect()
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
 def _init() -> None:
     WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
-    with _LOCK, _connect() as conn:
+    with _LOCK, _db() as conn:
         conn.execute("CREATE TABLE IF NOT EXISTS account (id INTEGER PRIMARY KEY CHECK(id=1), cash TEXT NOT NULL)")
         conn.execute("CREATE TABLE IF NOT EXISTS fills (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, side TEXT NOT NULL, quantity TEXT NOT NULL, reference_price TEXT NOT NULL, fill_price TEXT NOT NULL, fee TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
         conn.execute("INSERT OR IGNORE INTO account(id,cash) VALUES(1,?)", (str(_STARTING_CASH),))
@@ -54,7 +66,7 @@ def place_paper_order(symbol: str, side: str, quantity: str, reference_price: st
         fill = (ref * (Decimal(1) + _SLIPPAGE if side == "BUY" else Decimal(1) - _SLIPPAGE)).quantize(_CENT, rounding=ROUND_HALF_UP)
         gross = (qty * fill).quantize(_CENT, rounding=ROUND_HALF_UP)
         fee = (gross * _FEE_RATE).quantize(_CENT, rounding=ROUND_HALF_UP)
-        with _LOCK, _connect() as conn:
+        with _LOCK, _db() as conn:
             conn.execute("BEGIN IMMEDIATE")
             cash = Decimal(conn.execute("SELECT cash FROM account WHERE id=1").fetchone()[0])
             held = Decimal("0")
@@ -85,7 +97,7 @@ def place_paper_order(symbol: str, side: str, quantity: str, reference_price: st
 
 def get_paper_portfolio() -> str:
     try:
-        with _LOCK, _connect() as conn:
+        with _LOCK, _db() as conn:
             cash = Decimal(conn.execute("SELECT cash FROM account WHERE id=1").fetchone()[0])
             rows = conn.execute("SELECT symbol, side, quantity FROM fills ORDER BY id").fetchall()
         positions = {}

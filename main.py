@@ -35,6 +35,28 @@ from agent import run_agent
 from proactive_daemon import generate_system_health_briefing
 
 console = Console()
+AVAILABLE_MODES = (
+    "General",
+    "Developer",
+    "Tester",
+    "Hacker",
+    "Medical",
+    "Reverse Engineering",
+    "Sports",
+    "Data Analyst",
+    "API",
+)
+
+
+def parse_mode_command(command: str):
+    """Resolve a CLI /mode command, preserving spaces in mode names."""
+    parts = command.strip().split(maxsplit=1)
+    if len(parts) != 2:
+        return None
+    requested = parts[1].strip().casefold()
+    return next((mode for mode in AVAILABLE_MODES if mode.casefold() == requested), None)
+
+
 BANNER = """[bold cyan]
     ██████╗ ███████╗██████╗ ██╗   ██╗
     ██╔══██╗██╔════╝██╔══██╗██║   ██║
@@ -52,7 +74,8 @@ def main():
     current_mode = "General"
     history = []  # recent {"role","content"} turns, so follow-ups like "yes" keep their context
     console.print(f"[bold green]System Online.[/bold green] Current Mode: [bold yellow]{current_mode}[/bold yellow]")
-    console.print("[dim]Commands: /mode <General|Developer|Tester|Hacker>, /health, /clear, /quit[/dim]\n")
+    console.print("[dim]Commands: /mode <mode name>, /health, /clear, /quit[/dim]")
+    console.print(f"[dim]Modes: {', '.join(AVAILABLE_MODES)}[/dim]\n")
 
     while True:
         try:
@@ -65,12 +88,12 @@ def main():
                 console.print("[bold red]Shutting down BERU AI AGENT. Goodbye![/bold red]")
                 break
             elif user_input.lower().startswith("/mode"):
-                parts = user_input.split()
-                if len(parts) > 1 and parts[1].capitalize() in ("General", "Developer", "Tester", "Hacker"):
-                    current_mode = parts[1].capitalize()
+                selected_mode = parse_mode_command(user_input)
+                if selected_mode:
+                    current_mode = selected_mode
                     console.print(f"🔄 Mode switched to: [bold yellow]{current_mode}[/bold yellow]\n")
                 else:
-                    console.print("Valid modes: General, Developer, Tester, Hacker\n")
+                    console.print(f"Valid modes: {', '.join(AVAILABLE_MODES)}\n")
                 continue
             elif user_input.lower() == "/health":
                 briefing = generate_system_health_briefing()

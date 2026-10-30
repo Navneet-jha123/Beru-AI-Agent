@@ -1,71 +1,106 @@
-# BERU local privacy and analysis patch
+# BERU AI Agent
 
-This folder contains only the files to add or replace in `C:\course Projects\AI Agent`. The source project was not overwritten.
+BERU is a local-first, multi-mode assistant for research, business data work,
+software development, automation, and specialized analysis. It has a Streamlit
+web interface and an interactive command-line interface. Tools are selected
+per request from a registry of functions so the model receives a relevant,
+bounded set instead of the entire catalog.
 
-## Apply manually
+## Run it
 
-1. Back up the current project folder.
-2. Copy only the files listed below into the project root, keeping the `modes/` subfolder structure. Replace matching files when Windows asks. Do not copy the validation/cache folders.
-3. Keep your existing `.env` file; this patch does not include or replace credentials.
-4. From the project folder, run `python -m pip install -r requirements.txt` and restart BERU.
-5. Select **Medical** or **Reverse Engineering** in the left “Help me with” menu.
+1. Use Python 3.10 or newer and install the dependencies:
 
-Files included:
+   ```powershell
+   python -m pip install -r requirements.txt
+   ```
 
-- New: `privacy_gateway.py`, `modes/medical.py`, `modes/reverse_engineering.py`
-- Replace: `agent.py`, `gateway.py`, `tools_registry.py`, `modes/tools_bundles.py`, `app.py`, `requirements.txt`
+2. Copy `.env.example` to `.env` and configure at least one model provider.
+   Keep real credentials in `.env`; do not commit that file.
+3. Start the web app with `streamlit run app.py`, or use `python main.py` for
+   the CLI.
 
-The registry, app, and dependency list also need edits; the original plan omitted those files even though its functions are defined or selected there.
+The Medical, Reverse Engineering, Data Analyst, and API modes require a model
+endpoint on the same machine and fail closed if it is unavailable. Configure
+`LOCAL_LLM_URL` for an installed local model server. The API mode additionally
+requires reviewed hostnames in `BERU_API_ALLOWED_HOSTS`.
 
-## What it does
+## Modes and business use
 
-- PII redaction masks common email addresses, IPv4 addresses, and local file paths in model messages and tool arguments. Returned text and tool arguments are rehydrated for the local app. Response caching is disabled for gateway calls so placeholder mappings cannot be confused between requests. Image/audio/file attachments are omitted by the filter because regex cannot inspect their contents.
-- Medical and Reverse Engineering run through a request-scoped local-only context. Only their corresponding local tools are offered; web, forged, write, and unrelated tools are not available in those modes. Local-only mode rejects a model URL that is not localhost or a loopback IP and does not fall back to a cloud model. Sensitive prompts are not added to persistent lessons or cross-session context.
-- The medical PDF tool reads up to 40 pages / 20 MB of selectable PDF text locally. It extracts a small list of common values and compares only against a reference interval detected on the same line. It does not OCR, diagnose, or give treatment advice. The symptom function is a limited phrase matcher and cannot rule out emergencies.
-- Reverse engineering reads at most 64 MB per file and returns bounded output. PE parsing, string extraction, and disassembly are static; analyzed samples are not executed or uploaded by these tools.
-- The `sports` bundle is an empty reserved bundle. This project has no sports data tools/provider, so it does not return schedules or scores.
+| Mode | Example work |
+| --- | --- |
+| General | Desktop assistance, browser research, memory, and project workflows |
+| Developer | Code changes, command execution, builds, and guarded tool creation |
+| Tester | Security review, test generation, fuzzing, and dependency checks |
+| Hacker | Authorized passive security research and posture checks |
+| Medical | Local calculators and bounded lab-value extraction; not diagnosis |
+| Reverse Engineering | Bounded static file analysis; samples are not executed |
+| Sports | Local sports calculations and configured score/standings providers |
+| Data Analyst | Local CSV, TSV, SQLite, and Excel exploration |
+| API | Reviewed OpenAPI operations on explicitly allowlisted hosts |
 
-## Limits and existing audit findings
+Business data workflows can start with `profile_csv` to see missing values,
+summary statistics, common categories, and potential IQR outliers, then use
+read-only SQL queries for follow-up questions. These are descriptive checks,
+not forecasts or proof that a value is wrong. The API connector can bridge
+approved services; writes are disabled unless explicitly enabled in config.
+For a CRM or ERP, BERU can use its OpenAPI 3 specification and an exact host
+allowlist. API-key or bearer values must come from environment variables.
+Vendor-specific OAuth sign-in and per-tenant access management are not
+implemented yet.
 
-No code can honestly be guaranteed “100% secure” or “zero bugs.” Regex redaction is best effort and cannot identify every PII type. It covers calls routed through `gateway.ask_ai` and `gateway.ask_ai_from_provider`; it does not stop unrelated network-enabled tools in other modes from sending their own inputs to external services. Local-only here means the configured model endpoint is loopback on the same machine. A remote Mac/Ollama endpoint will be blocked.
+## Feedback, learning, and monitoring
 
-The existing project security scanner reported 80 `Silent Exception` findings across 24 Python files in the staged project. That scanner treats every one-line `except: pass/continue` as HIGH and is heuristic; each finding needs review rather than being treated as a confirmed vulnerability. Unrelated existing files were not changed in this patch.
+- Each assistant answer can receive a helpful/not-helpful rating and a reason
+  category. Feedback stays in `workspace/beru_feedback.db`; it stores a hash
+  and character count for the answer, not the prompt or response text.
+- Users can explicitly choose a fixed response-style preference (concise,
+  detailed, bullets, or plain language). BERU applies it in non-private modes.
+  Medical, Reverse Engineering, Data Analyst, API, and Watchdog modes do not
+  read or update this preference.
+- This is a controlled preference and evaluation loop, not model fine-tuning.
+  Ratings are review signals and do not automatically change model weights,
+  tools, or safety rules.
+- Activity history shows a cached system-health snapshot, cumulative tool
+  success/failure counts, and metadata-only model, tool, and session timings.
+  The health snapshot refreshes when the page reruns and is cached for up to
+  30 seconds; this is not a continuous alerting or auto-remediation service.
 
-## Verification performed
+## Privacy and operational controls
 
-- Python syntax compilation passed for the patch files.
-- Tool registry parity passed: 134 tools and 134 schemas.
-- Existing `test_security.py`: 27 passed in a staged copy of the project.
-- Targeted checks passed for redaction/rehydration, attachment omission, local-only cloud blocking, reference-interval parsing, BMI input bounds, and emergency-phrase handling.
-- `capstone` and `pdfplumber` were not installed in the validation environment. The tools return a clear dependency message if either is missing; installation is handled by the updated requirements file.
+- Private analysis modes expose a restricted tool allowlist and use a local
+  model endpoint. Keep a local model server bound to loopback unless you have
+  deliberately reviewed your network setup.
+- Data analysis only reads files inside the project or its `workspace` folder;
+  CSV and SQLite query results are capped. Excel formulas are not evaluated.
+- OpenAPI calls use exact host allowlists. HTTPS and GET-only behavior are the
+  defaults. Never put credentials directly in tool arguments or source files.
+- Tool creation requires approval and runs in a subprocess with a stripped
+  environment and timeout. Review any generated code before activation.
+- Scheduling, file monitoring, system administration, browser automation, and
+  other actions can affect the local machine. Review each tool's purpose and
+  configuration before enabling it for unattended use.
 
-This is a reviewed implementation, not a professional medical device, malware verdict, or independent security certification.
-# Local data, API, monitoring, and screen analysis upgrades
+## Product priorities
 
-Install the added data/YAML dependencies with `pip install -r requirements.txt`.
-Data Analyst mode uses the configured localhost model and exposes read-only
-CSV/SQLite/Excel tools. Data paths must resolve inside this project or its
-workspace; CSV/SQLite results are capped at 1,000 rows.
+For a business-ready release, the highest-value next steps are to pick one
+customer segment and ship a measurable workflow for it; add consented,
+versioned evaluations for that workflow; and provide deployment, access,
+retention, audit, and OAuth/tenant controls expected by that segment. Start with an outcome
+such as time saved per report or fewer support handoffs, and validate it with
+pilot users before pricing the product. Do not market current descriptive
+analytics as predictive intelligence or current integrations as universal ERP
+connectivity.
 
-API mode also requires the local model. Review a spec before ingesting it. Add
-exact DNS names to `BERU_API_ALLOWED_HOSTS`; remote spec URLs and API servers
-must use those hosts. HTTPS and GET-only calls are the defaults. Enable HTTP or
-mutating calls only when required and after reviewing the specific target.
-Credentials belong in environment variables and may be referenced as
-`${ENV:NAME}` in supported auth headers. Specs are retained in process memory;
-restart the app to clear them.
+## Verification
 
-Watchdog resource rules emit a high-resource event only after a 90% CPU/RAM or
-95% disk threshold persists for five minutes. `run_agent` actions are
-read-only-intended background diagnostics with a ten-minute per-rule cooldown.
-Windows service restart is disabled until exact names are listed in
-`BERU_RESTARTABLE_SERVICES`.
+Run the existing security suite with `python -m pytest test_security.py -q`.
+Check the tool/schema registry with:
 
-Screen UI Automation remains available. Optional YOLO detection needs an
-operator-provided, locally reviewed `.pt` file configured with
-`BERU_YOLO_MODEL`; BERU does not download or train a model automatically.
-Button/input/checkbox detection training requires a labeled local dataset and
-locally stored YOLO weights. `python train_ui_detector.py --dataset
-workspace/ui_data.yaml --weights workspace/yolov8n.pt` prompts for an explicit
-confirmation, then writes output under `workspace/beru_yolo_runs/`. Install
-Ultralytics separately only after reviewing its dependencies.
+```powershell
+python -c "from tools_registry import validate_registry_parity; print(validate_registry_parity())"
+```
+
+Optional capabilities such as market data, Telegram, screen detection, and
+specialized file parsers require their documented provider credentials or
+dependencies. Check `.env.example` and the feature-specific tool response for
+the exact requirements.

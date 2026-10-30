@@ -7,10 +7,9 @@ the classifier picks 1-4 bundles based on the user's message and active mode.
 The retriever (modes/tool_retriever.py) then ranks the tools within those
 bundles and sends only the top-K to the LLM.
 
-Why bundles: Groq, OpenAI, and OpenRouter cap function-calling tool arrays at
-128 entries. BERU currently has 130 tools. Without bundling, every LLM request
-fails with HTTP 400 "array too long". Bundling keeps every request at ~20-40
-schemas regardless of how many total tools BERU ships with.
+Why bundles: some model providers cap function-calling tool arrays. BERU has
+more than 128 registered tools. Bundling keeps each request focused and below
+the retriever's per-request schema limit.
 
 Extending: to add a tool, add its name to the appropriate bundle below. To add
 a new domain, add a key to TOOL_BUNDLES and a matching keyword list to
@@ -59,7 +58,7 @@ TOOL_BUNDLES = {
     ],
 
     "api": ["ingest_openapi_spec", "execute_api_request"],
-    "data_analyst": ["query_csv", "query_sqlite_db", "analyze_excel"],
+    "data_analyst": ["profile_csv", "query_csv", "query_sqlite_db", "analyze_excel"],
 
     "tester": [
         "audit_code_security", "synthesize_test_suite",
@@ -99,7 +98,7 @@ TOOL_BUNDLES = {
     "reverse_engineering": [
         "hash_file", "analyze_pe_header", "extract_strings", "find_indicators", "disassemble_bytes"
     ],
-    # Reserved domain only: no sports data tools exist in this repository yet.
+    # Sports data providers and local calculators.
         "sports": [
         "fetch_football_standings", "fetch_team_form", "fetch_cricket_score", "fetch_nba_standings",
         "calculate_elo_probability", "calculate_win_percentage", "calculate_points_per_game",

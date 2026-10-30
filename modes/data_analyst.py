@@ -5,8 +5,10 @@ import csv
 import json
 import re
 import sqlite3
+import statistics
 import threading
 import zipfile
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -14,11 +16,16 @@ from config import BASE_DIR, WORKSPACE_DIR
 
 MAX_FILE_BYTES = 100 * 1024 * 1024
 MAX_ROWS = 1000
+MAX_PROFILE_ROWS = 10_000
+MAX_PROFILE_COLUMNS = 100
 _FORBIDDEN_SQL = re.compile(r"\b(attach|detach|pragma|copy|install|load|call|create|drop|alter|insert|update|delete|replace|vacuum|execute|set|reset|extension|read_csv|read_json|read_parquet|glob)\b", re.I)
 
 
 def _allowed_file(raw_path: str, suffixes: set[str]) -> Path:
-    candidate = Path(raw_path).expanduser().resolve(strict=True)
+    supplied = Path(raw_path).expanduser()
+    if not supplied.is_absolute():
+        supplied = Path(BASE_DIR) / supplied
+    candidate = supplied.resolve(strict=True)
     roots = [Path(BASE_DIR).resolve(), Path(WORKSPACE_DIR).resolve()]
     if not any(candidate == root or root in candidate.parents for root in roots):
         raise ValueError("File must be inside the project folder or configured workspace.")
@@ -76,6 +83,112 @@ def query_csv(file_path: str, sql_query: str) -> str:
             connection.close()
     except Exception as exc:
         return f"CSV query failed: {type(exc).__name__}: {exc}"
+
+
+def profile_csv(file_path: str, max_rows: int = MAX_PROFILE_ROWS) -> str:
+    """Summarize a bounded CSV/TSV locally, including missing values and outliers."""
+    path = _allowed_file(file_path, {".csv", ".tsv"})
+    if isinstance(max_rows, bool) or not isinstance(max_rows, int):
+        return f"max_rows must be an integer between 1 and {MAX_PROFILE_ROWS}."
+    if not 1 <= max_rows <= MAX_PROFILE_ROWS:
+        return f"max_rows must be between 1 and {MAX_PROFILE_ROWS}."
+    row_limit = max_rows
+
+    delimiter = "\t" if path.suffix.lower() == ".tsv" else ","
+    missing_tokens = {"", "na", "n/a", "null", "none", "nan"}
+    try:
+        with path.open("r", encoding="utf-8-sig", newline="") as source:
+            reader = csv.reader(source, delimiter=delimiter)
+            raw_headers = next(reader, None)
+            if not raw_headers:
+                return "CSV profile failed: the file has no header row."
+            if len(raw_headers) > MAX_PROFILE_COLUMNS:
+                return f"CSV profile failed: at most {MAX_PROFILE_COLUMNS} columns are supported."
+
+            headers: list[str] = []
+            used: set[str] = set()
+            for index, raw in enumerate(raw_headers, start=1):
+                base = raw.strip() or f"column_{index}"
+                name = base
+                suffix = 2
+                while name in used:
+                    name = f"{base}_{suffix}"
+                    suffix += 1
+                headers.append(name)
+                used.add(name)
+
+            numeric: list[list[float]] = [[] for _ in headers]
+            counts = [0] * len(headers)
+            missing = [0] * len(headers)
+            categories = [Counter() for _ in headers]
+            category_keys = [set() for _ in headers]
+            scanned = 0
+            truncated = False
+
+            for row in reader:
+                if not row or all(not value.strip() for value in row):
+                    continue
+                if scanned >= row_limit:
+                    truncated = True
+                    break
+                scanned += 1
+                for index, raw_value in enumerate(row[:len(headers)]):
+                    value = raw_value.strip()
+                    if value.casefold() in missing_tokens:
+                        missing[index] += 1
+                        continue
+                    counts[index] += 1
+                    try:
+                        number = float(value.replace(",", ""))
+                        if number == number and abs(number) != float("inf"):
+                            numeric[index].append(number)
+                    except (TypeError, ValueError, OverflowError):
+                        if len(category_keys[index]) < 500 or value in category_keys[index]:
+                            category_keys[index].add(value)
+                            categories[index][value] += 1
+                for index in range(len(row), len(headers)):
+                    missing[index] += 1
+
+        profile = []
+        for index, name in enumerate(headers):
+            values = numeric[index]
+            denominator = counts[index]
+            if values and len(values) / max(1, denominator) >= 0.9:
+                ordered = sorted(values)
+                q1, _, q3 = statistics.quantiles(ordered, n=4, method="inclusive") if len(ordered) > 1 else (ordered[0], ordered[0], ordered[0])
+                spread = q3 - q1
+                low, high = q1 - 1.5 * spread, q3 + 1.5 * spread
+                profile.append({
+                    "column": name,
+                    "type": "numeric",
+                    "non_missing": denominator,
+                    "missing": missing[index],
+                    "numeric_count": len(values),
+                    "min": min(values),
+                    "max": max(values),
+                    "mean": statistics.fmean(values),
+                    "median": statistics.median(values),
+                    "q1": q1,
+                    "q3": q3,
+                    "iqr_outlier_count": sum(value < low or value > high for value in values),
+                })
+            else:
+                profile.append({
+                    "column": name,
+                    "type": "categorical",
+                    "non_missing": denominator,
+                    "missing": missing[index],
+                    "distinct_values_seen": len(categories[index]),
+                    "distinct_value_sample_capped": len(category_keys[index]) >= 500,
+                    "top_values": [{"value": value, "count": count}
+                                   for value, count in categories[index].most_common(10)],
+                })
+
+        return json.dumps({"file": path.name, "rows_profiled": scanned,
+                           "row_limit_reached": truncated, "columns": profile},
+                          ensure_ascii=False, default=str)
+    except (OSError, UnicodeError, csv.Error) as exc:
+        return f"CSV profile failed: {type(exc).__name__}: {exc}"
 
 
 def query_sqlite_db(db_path: str, sql_query: str) -> str:
