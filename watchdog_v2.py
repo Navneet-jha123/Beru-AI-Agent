@@ -35,6 +35,8 @@ _last_git_commit: Optional[str] = None
 
 # Watched folders (in addition to workspace)
 _watched_folders: Set[Path] = {WORKSPACE_DIR}
+_resource_high_since: Dict[str, float] = {}
+_resource_alerted: Set[str] = set()
 
 
 # --------------------------------------------------------------------------- #
@@ -208,19 +210,27 @@ def _detect_git_change() -> None:
 
 
 def _detect_resource_spike() -> None:
-    """Detect CPU/RAM/disk crossing thresholds — emits an event once per spike."""
+    """Emit one resource event only after the configured threshold persists 5 minutes."""
     try:
         import psutil
         ram = psutil.virtual_memory()
         cpu = psutil.cpu_percent(interval=None)
         disk = psutil.disk_usage(os.environ.get("SystemDrive", "C:") + "\\" if os.name == "nt" else "/")
-
-        if ram.percent >= 90:
-            _emit("resource_spike", {"resource": "ram", "value": ram.percent})
-        if cpu >= 90:
-            _emit("resource_spike", {"resource": "cpu", "value": cpu})
-        if disk.percent >= 95:
-            _emit("resource_spike", {"resource": "disk", "value": disk.percent})
+        values = {"cpu": (float(cpu), 90.0), "ram": (float(ram.percent), 90.0),
+                  "disk": (float(disk.percent), 95.0)}
+        now = time.monotonic()
+        with _lock:
+            for resource, (value, threshold) in values.items():
+                if value >= threshold:
+                    _resource_high_since.setdefault(resource, now)
+                    duration = now - _resource_high_since[resource]
+                    if duration >= 300 and resource not in _resource_alerted:
+                        _resource_alerted.add(resource)
+                        _emit("resource_spike", {"resource": resource, "value": value,
+                                                 "duration_sec": int(duration), "threshold": threshold})
+                else:
+                    _resource_high_since.pop(resource, None)
+                    _resource_alerted.discard(resource)
     except Exception:
         pass
 

@@ -22,6 +22,8 @@ from config import WORKSPACE_DIR
 
 RULES_FILE = WORKSPACE_DIR / "rules.json"
 _lock = threading.RLock()
+_agent_cooldowns: Dict[str, float] = {}
+_agent_running: set[str] = set()
 
 
 # --------------------------------------------------------------------------- #
@@ -94,7 +96,7 @@ def _execute_action(action_type: str, action_value: str, event: Dict[str, Any]) 
 
     action_type values:
       - "notify"         : send a Windows notification (action_value = message text)
-      - "agent"          : run the agent with the given prompt
+      - "agent" / "run_agent": run a rate-limited, read-only diagnostic agent task
       - "shell"          : run a shell command (blocked for dangerous keywords)
       - "append_log"     : append event details to workspace/watchdog_log.jsonl
     """
@@ -107,13 +109,45 @@ def _execute_action(action_type: str, action_value: str, event: Dict[str, Any]) 
         except Exception as e:
             return f"notify failed: {e}"
 
-    if action_type == "agent":
+    if action_type in {"agent", "run_agent"}:
+        rule_id = str(event.get("rule_id") or "")
+        if not rule_id:
+            return "agent action rejected: rule identifier is missing"
+        now = time.monotonic()
+        with _lock:
+            if rule_id in _agent_running:
+                return "agent action skipped: this rule already has a diagnostic running"
+            if now - _agent_cooldowns.get(rule_id, 0.0) < 600:
+                return "agent action skipped: this rule is cooling down (10 minutes)"
+            _agent_cooldowns[rule_id] = now
+            _agent_running.add(rule_id)
+
+        def _run_diagnostic() -> None:
+            try:
+                from agent import run_agent
+                prompt = action_value.strip()[:1500]
+                diagnostic = (
+                    "Automated watchdog diagnostic. Perform read-only investigation only; do not edit files, "
+                    "run shell commands, restart services, send messages, or make external changes. "
+                    f"Trigger event: {json.dumps(event, ensure_ascii=True)[:1200]}. Task: {prompt}"
+                )
+                result = run_agent(diagnostic, mode="Watchdog")
+                _append_fire_log(rule_id, event.get("type", "unknown"), f"diagnostic completed: {str(result)[:300]}")
+            except Exception as exc:
+                _append_fire_log(rule_id, event.get("type", "unknown"), f"diagnostic failed: {type(exc).__name__}: {exc}")
+            finally:
+                with _lock:
+                    _agent_running.discard(rule_id)
+
+        threading.Thread(target=_run_diagnostic, name=f"beru-rule-agent-{rule_id}", daemon=True).start()
+        return "read-only diagnostic agent started in background (10-minute per-rule cooldown)"
+
+    if action_type == "restart_service":
         try:
-            from agent import run_agent
-            result = run_agent(action_value or "Summarize the latest change")
-            return f"agent result: {str(result)[:300]}"
-        except Exception as e:
-            return f"agent action failed: {e}"
+            from modes.system_admin import restart_service
+            return restart_service(action_value)
+        except Exception as exc:
+            return f"service restart action failed: {type(exc).__name__}: {exc}"
 
     if action_type == "append_log":
         try:
@@ -126,6 +160,16 @@ def _execute_action(action_type: str, action_value: str, event: Dict[str, Any]) 
             return f"append_log failed: {e}"
 
     return f"unknown action_type '{action_type}'"
+
+
+def _append_fire_log(rule_id: str, event_type: str, result: str) -> None:
+    try:
+        log_path = WORKSPACE_DIR / "rule_fires.jsonl"
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"ts": time.time(), "rule_id": rule_id,
+                                "event": event_type, "result": result[:300]}) + "\n")
+    except OSError:
+        pass
 
 
 # --------------------------------------------------------------------------- #
@@ -150,7 +194,9 @@ def _engine_loop(interval_sec: int = 30) -> None:
                     period_min = int(rule.get("condition_value") or 10)
                     period_ticks = max(1, int((period_min * 60) / max(1, interval_sec)))
                     if tick_num % period_ticks == 0:
-                        _execute_action(rule.get("action_type", ""), rule.get("action_value", ""), synthetic)
+                        rule_event = {**synthetic, "rule_id": rule.get("id", "")}
+                        result = _execute_action(rule.get("action_type", ""), rule.get("action_value", ""), rule_event)
+                        _append_fire_log(str(rule.get("id", "")), "cron_tick", result)
         except Exception:
             pass
         _stop_event.wait(interval_sec)
@@ -161,19 +207,20 @@ def handle_event(event_type: str, details: Dict[str, Any]) -> None:
     Called by the watchdog for every event it detects.
     Matches against all rules and fires the ones that match.
     """
-    event = {"type": event_type, "details": details}
+    event = {"type": event_type, "details": dict(details)}
     rules = _load_rules()
     for rule in rules:
         try:
+            rule_event = {**event, "rule_id": rule.get("id", "")}
             if _match_condition(
                 rule.get("condition_type", ""),
                 rule.get("condition_value", ""),
-                event,
+                rule_event,
             ):
                 result = _execute_action(
                     rule.get("action_type", ""),
                     rule.get("action_value", ""),
-                    event,
+                    rule_event,
                 )
                 # Log the fire (best-effort)
                 try:
@@ -205,10 +252,10 @@ def add_trigger_rule(
     Add a rule that fires an action when a watchdog event matches.
 
     condition_type: file_created | file_modified | file_deleted | git_commit | resource_spike | cron_tick
-    action_type:    notify | agent | shell | append_log
+    action_type:    notify | run_agent | agent | restart_service | append_log
     """
     valid_c = {"file_created", "file_modified", "file_deleted", "git_commit", "resource_spike", "cron_tick"}
-    valid_a = {"notify", "agent", "append_log"}
+    valid_a = {"notify", "run_agent", "agent", "restart_service", "append_log"}
     if condition_type not in valid_c:
         return f"Failed: condition_type must be one of {sorted(valid_c)}"
     if action_type not in valid_a:

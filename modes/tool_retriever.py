@@ -109,6 +109,14 @@ def retrieve_tools(
     for b in bundles:
         allowed_names.update(TOOL_BUNDLES.get(b, []))
 
+    # These operation-specific tools are generated dynamically after an OpenAPI
+    # spec is ingested. Keep them out of every unrelated request's schema set.
+    if "api" in bundles:
+        allowed_names.update(
+            _schema_name(s) for s in all_schemas
+            if _schema_name(s).startswith("apiop_")
+        )
+
     # Always include any forged tools (user-created, must remain reachable).
     try:
         from forge import FORGED_SCHEMAS

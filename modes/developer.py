@@ -432,9 +432,10 @@ def profile_python_script(script_path: str, duration_limit: int = 15) -> str:
 # Terminal & Test Execution
 # --------------------------------------------------------------------------- #
 # Safe-executable allowlist for developer commands.
+# Note: Removed shell built-ins (dir, ls, type, cat, echo) because subprocess
+# runs with shell=False and these are not actual executable files.
 _SAFE_DEV_CMDS = {
-    "python", "python3", "pip", "pytest", "git", "npm", "node",
-    "dir", "ls", "type", "cat", "echo", "pyinstaller",
+    "python", "python3", "pip", "pytest", "git", "npm", "node", "pyinstaller",
 }
 
 # Args that are never allowed with the above commands — they enable

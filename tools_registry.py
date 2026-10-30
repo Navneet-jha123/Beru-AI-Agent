@@ -105,7 +105,6 @@ from modes.medical import (
 from modes.reverse_engineering import (
     hash_file, analyze_pe_header, extract_strings, find_indicators, disassemble_bytes
 )
-from modes.reverse_engineering import analyze_pe_header, disassemble_bytes, extract_strings
 from modes.projects import (
     create_project,
     list_projects,
@@ -121,6 +120,10 @@ from modes.sports import (
     calculate_expected_goals, calculate_form_index,
     suggest_sports_tools, run_sports_tool, list_sports_tools,
 )
+from modes.data_analyst import query_csv, query_sqlite_db, analyze_excel
+from openapi_connector import ingest_openapi_spec, execute_api_request
+from modes.system_admin import get_top_processes, restart_service
+from vision_uia import detect_screen_elements_yolo, inspect_screen_hybrid
 from typing import Any, Callable, Dict, List, Optional
 
 # --------------------------------------------------------------------------- #
@@ -221,9 +224,6 @@ BASE_TOOLS: Dict[str, Callable] = {
     "analyze_pe_header": analyze_pe_header,
     "extract_strings": extract_strings,
     "disassemble_bytes": disassemble_bytes,
-    "parse_lab_report": parse_lab_report,
-    "calculate_bmi": calculate_bmi,
-    "check_symptom_red_flags": check_symptom_red_flags,
 
     # Malware Scanner (Features 36-40)
     "check_hash_reputation": check_hash_reputation,
@@ -297,6 +297,7 @@ BASE_TOOLS: Dict[str, Callable] = {
     "browser_close": browser_close,
     # Self-Evolving Forge
     "forge_new_tool": forge_new_tool,
+    "approve_tool": approve_tool, # <-- ADD THIS LINE
     "reject_tool": reject_tool,
     "list_pending_tools": list_pending_tools,
     "rollback_tool": rollback_tool,
@@ -407,6 +408,18 @@ BASE_TOOLS: Dict[str, Callable] = {
     "suggest_sports_tools": suggest_sports_tools,
     "run_sports_tool": run_sports_tool,
     "list_sports_tools": list_sports_tools,
+    # Local data engine (read-only)
+    "query_csv": query_csv,
+    "query_sqlite_db": query_sqlite_db,
+    "analyze_excel": analyze_excel,
+    # Explicitly allowlisted API connector
+    "ingest_openapi_spec": ingest_openapi_spec,
+    "execute_api_request": execute_api_request,
+    # Guarded administration and local visual detection
+    "restart_service": restart_service,
+    "get_top_processes": get_top_processes,
+    "detect_screen_elements_yolo": detect_screen_elements_yolo,
+    "inspect_screen_hybrid": inspect_screen_hybrid,
 }
 
 BASE_TOOL_SCHEMAS: List[Dict[str, Any]] = [
@@ -446,7 +459,7 @@ BASE_TOOL_SCHEMAS: List[Dict[str, Any]] = [
     {"type": "function", "function": {"name": "get_paper_portfolio", "description": "Show BERU's local simulated paper-trading cash and positions. No live brokerage connection.", "parameters": {"type": "object", "properties": {}, "required": []}}},
 
 
-    {"type": "function", "function": {"name": "inspect_screen", "description": "Inspects active window and returns exact UI elements (buttons, inputs, menus) via Windows UI Automation.", "parameters": {"type": "object", "properties": {"window_keyword": {"type": "string", "default": ""}}, "required": []}}},
+    {"type": "function", "function": {"name": "inspect_screen", "description": "USE THIS TO READ THE SCREEN. Inspects the active window and returns exact UI elements, visible text, and OCR data via Windows UI Automation. Works out-of-the-box without extra models.", "parameters": {"type": "object", "properties": {"window_keyword": {"type": "string", "default": ""}}, "required": []}}},
     {"type": "function", "function": {"name": "click_ui_element", "description": "Clicks an on-screen button, tab, or menu item by visible text or label.", "parameters": {"type": "object", "properties": {"target_name": {"type": "string"}, "double_click": {"type": "boolean", "default": False}}, "required": ["target_name"]}}},
     {"type": "function", "function": {"name": "type_on_screen", "description": "Types text into the currently focused window or field.", "parameters": {"type": "object", "properties": {"text": {"type": "string"}, "submit": {"type": "boolean", "default": False}}, "required": ["text"]}}},
     {"type": "function", "function": {"name": "press_key", "description": "Presses a keyboard key (e.g. 'enter', 'tab', 'esc', 'win').", "parameters": {"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"]}}},
@@ -475,6 +488,7 @@ BASE_TOOL_SCHEMAS: List[Dict[str, Any]] = [
     {"type": "function", "function": {"name": "browser_close", "description": "Closes the browser session.", "parameters": {"type": "object", "properties": {}, "required": []}}},
 
     {"type": "function", "function": {"name": "forge_new_tool", "description": "Proposes a new Python tool. Requires approval via approve_tool unless confirm=True. Never pass confirm=True unless the user has explicitly authorized immediate activation.", "parameters": {"type": "object", "properties": {"name": {"type": "string"}, "description": {"type": "string"}, "code": {"type": "string"}, "parameters_schema": {"type": "object"}, "sample_input": {"type": "object"}, "confirm": {"type": "boolean", "default": False}}, "required": ["name", "description", "code", "parameters_schema"]}}},
+    {"type": "function", "function": {"name": "approve_tool", "description": "Activate a pending forged tool. ONLY call this after the user explicitly says 'yes', 'approve it', or 'proceed'.", "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}},
     {"type": "function", "function": {"name": "query_episodic_memory", "description": "Queries past conversation history. Use for 'What did we discuss yesterday?' or topic lookups.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "date_filter": {"type": "string", "default": ""}}, "required": ["query"]}}},
     {"type": "function", "function": {"name": "add_entity_relation", "description": "Links entities in the knowledge graph (e.g. person --[works_on]--> project).", "parameters": {"type": "object", "properties": {"source": {"type": "string"}, "target": {"type": "string"}, "relation": {"type": "string"}, "entity_type": {"type": "string", "default": "concept"}}, "required": ["source", "target", "relation"]}}},
     {"type": "function", "function": {"name": "query_entity_graph", "description": "Finds related entities in the knowledge graph.", "parameters": {"type": "object", "properties": {"entity_name": {"type": "string"}}, "required": ["entity_name"]}}},
@@ -539,7 +553,7 @@ BASE_TOOL_SCHEMAS: List[Dict[str, Any]] = [
     {"type": "function", "function": {"name": "list_watch_folders", "description": "List watched folders.", "parameters": {"type": "object", "properties": {}, "required": []}}},
 
     # Feature 48
-    {"type": "function", "function": {"name": "add_trigger_rule", "description": "Add a trigger-action rule. condition_type: file_created/file_modified/file_deleted/git_commit/resource_spike/cron_tick. action_type: notify/agent/shell/append_log.", "parameters": {"type": "object", "properties": {"description": {"type": "string"}, "condition_type": {"type": "string"}, "condition_value": {"type": "string"}, "action_type": {"type": "string"}, "action_value": {"type": "string"}}, "required": ["description", "condition_type", "condition_value", "action_type", "action_value"]}}},
+    {"type": "function", "function": {"name": "add_trigger_rule", "description": "Add a trigger-action rule. Conditions: file_created/file_modified/file_deleted/git_commit/resource_spike/cron_tick. Actions: notify/run_agent/restart_service/append_log. run_agent is read-only and local-only; restart_service only works for names in BERU_RESTARTABLE_SERVICES.", "parameters": {"type": "object", "properties": {"description": {"type": "string"}, "condition_type": {"type": "string", "enum": ["file_created", "file_modified", "file_deleted", "git_commit", "resource_spike", "cron_tick"]}, "condition_value": {"type": "string"}, "action_type": {"type": "string", "enum": ["notify", "run_agent", "restart_service", "append_log"]}, "action_value": {"type": "string"}}, "required": ["description", "condition_type", "condition_value", "action_type", "action_value"]}}},
     {"type": "function", "function": {"name": "list_trigger_rules", "description": "List all trigger rules.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "delete_trigger_rule", "description": "Delete a trigger rule by ID.", "parameters": {"type": "object", "properties": {"rule_id": {"type": "string"}}, "required": ["rule_id"]}}},
 
@@ -691,6 +705,18 @@ BASE_TOOL_SCHEMAS: List[Dict[str, Any]] = [
     }},
 
 ]
+
+BASE_TOOL_SCHEMAS.extend([
+    {"type": "function", "function": {"name": "query_csv", "description": "LOCAL READ-ONLY: Run one DuckDB SELECT against a CSV/TSV file inside the project or workspace, exposed as table `data`. Result rows are capped.", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "sql_query": {"type": "string", "maxLength": 8000}}, "required": ["file_path", "sql_query"], "additionalProperties": False}}},
+    {"type": "function", "function": {"name": "query_sqlite_db", "description": "LOCAL READ-ONLY: Query a SQLite database inside the project or workspace using one SELECT/CTE. Mutations and pragmas are blocked; result rows are capped.", "parameters": {"type": "object", "properties": {"db_path": {"type": "string"}, "sql_query": {"type": "string", "maxLength": 8000}}, "required": ["db_path", "sql_query"], "additionalProperties": False}}},
+    {"type": "function", "function": {"name": "analyze_excel", "description": "LOCAL READ-ONLY: Preview, profile, or list sheets in an .xlsx/.xlsm file inside the project or workspace. Formulas are not evaluated.", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "operation": {"type": "string", "enum": ["preview", "profile", "list_sheets"], "default": "preview"}, "sheet_name": {"type": "string", "default": ""}}, "required": ["file_path"], "additionalProperties": False}}},
+    {"type": "function", "function": {"name": "ingest_openapi_spec", "description": "Load an OpenAPI 3.x JSON/YAML spec from a project/workspace file or an exact allowlisted HTTPS host. Returns operations for discovery. Specs remain in memory only.", "parameters": {"type": "object", "properties": {"url_or_file_path": {"type": "string", "maxLength": 2048}}, "required": ["url_or_file_path"], "additionalProperties": False}}},
+    {"type": "function", "function": {"name": "execute_api_request", "description": "Execute only an operation route/method from an ingested spec on a host listed in BERU_API_ALLOWED_HOSTS. GET is default; writes require BERU_API_ALLOW_WRITE_METHODS=1. Auth values must be environment references, never literal secrets.", "parameters": {"type": "object", "properties": {"base_url": {"type": "string"}, "endpoint": {"type": "string"}, "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]}, "headers": {"type": "object", "additionalProperties": {"type": "string"}}, "payload": {"type": "object", "description": "JSON object body; operation-specific dynamic tools support declared body schemas."}, "path_params": {"type": "object", "additionalProperties": True}, "query_params": {"type": "object", "additionalProperties": True}}, "required": ["base_url", "endpoint", "method"], "additionalProperties": False}}},
+    {"type": "function", "function": {"name": "restart_service", "description": "WINDOWS SIDE EFFECT: Restart only an exact service listed in BERU_RESTARTABLE_SERVICES. The allowlist must be configured by the computer owner.", "parameters": {"type": "object", "properties": {"service_name": {"type": "string", "maxLength": 128}}, "required": ["service_name"], "additionalProperties": False}}},
+    {"type": "function", "function": {"name": "get_top_processes", "description": "LOCAL READ-ONLY: Return a short CPU/memory snapshot of running processes. It does not stop or modify processes.", "parameters": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 25, "default": 10}}, "required": []}}},
+    {"type": "function", "function": {"name": "detect_screen_elements_yolo", "description": "LOCAL ONLY (Requires BERU_YOLO_MODEL). Use ONLY if asked to identify specific visual UI elements (like buttons or icons) and the built-in inspect_screen failed. Do NOT use this for general screen reading.", "parameters": {"type": "object", "properties": {"max_detections": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50}}, "required": []}}},
+    {"type": "function", "function": {"name": "inspect_screen_hybrid", "description": "Combine existing Windows UI Automation/OCR inspection with optional local YOLO detections. YOLO needs BERU_YOLO_MODEL pointing to a local .pt file.", "parameters": {"type": "object", "properties": {"window_keyword": {"type": "string", "default": ""}, "max_detections": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50}}, "required": []}}},
+])
 # Auto-generate medical calculator schemas from the registry
 from modes.medical import tool_specs as _med_specs
 for _spec in _med_specs():
@@ -708,6 +734,8 @@ def get_live_tools() -> Dict[str, Callable]:
     """Returns all base tools merged with live forged tools."""
     combined = dict(BASE_TOOLS)
     combined.update(ACTIVE_FORGED_TOOLS)
+    from openapi_connector import get_dynamic_api_tools
+    combined.update(get_dynamic_api_tools())
     return combined
 
 
@@ -727,7 +755,8 @@ def get_live_schemas(
     which calls this function indirectly. Direct callers can still use
     get_live_schemas() to get the full set.
     """
-    full = list(BASE_TOOL_SCHEMAS) + list(FORGED_SCHEMAS)
+    from openapi_connector import get_dynamic_api_schemas
+    full = list(BASE_TOOL_SCHEMAS) + list(FORGED_SCHEMAS) + get_dynamic_api_schemas()
 
     if bundles is not None:
         from modes.tools_bundles import TOOL_BUNDLES

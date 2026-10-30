@@ -81,6 +81,8 @@ MODE_LABELS = {
     "Medical": "Diagnostic Assistant (Local)",
     "Reverse Engineering": "Offline static binary analysis",
     "Sports": "Sports analytics (Local)",
+    "Data Analyst": "Private spreadsheet & SQL analysis",
+    "API": "Private OpenAPI connector",
 }
 MODE_HINTS = {
     "General": "A good place to start. Ask naturally, without special commands.",
@@ -90,6 +92,8 @@ MODE_HINTS = {
     "Medical": "Lab extraction and simple calculations run locally. This is not diagnosis or medical advice.",
     "Reverse Engineering": "Inspect bounded files locally. Samples are never executed by these analysis tools.",
     "Sports": "Local calculators for Elo, form, win rate. Free-tier fetchers for live scores. Not betting advice.",
+    "Data Analyst": "Run read-only CSV, SQLite and Excel queries using your configured local model.",
+    "API": "Connect to reviewed OpenAPI operations on explicitly allowlisted hosts using your local model.",
 }
 PAGES = ["Assistant", "Stock explorer", "Create tools", "Developer workspace", "Website checks", "Activity history"]
 NAV_LABELS = {
@@ -384,6 +388,33 @@ li[role="option"][aria-selected="true"] {
   border: 1px solid var(--b-line2) !important; border-radius: 11px; font-weight: 550; min-height: 42px; padding: 9px 16px; transition: background .15s ease, border-color .15s ease; }
 [data-testid="stButton"] button p, [data-testid="stDownloadButton"] button p { color: inherit !important; }
 [data-testid="stButton"] button:hover, [data-testid="stDownloadButton"] button:hover { background: var(--b-tint) !important; border-color: var(--b-accent) !important; color: var(--b-tint-text) !important; }
+/* Keep navigation quiet and quick actions visually integrated with their cards.
+   These rules follow the global button styles so the global outline cannot win. */
+.stApp .st-key-beru_navigation [data-testid="stButton"] button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]) {
+  background: transparent !important; color: var(--b-muted) !important;
+  border: 1px solid transparent !important; box-shadow: none !important;
+}
+.stApp .st-key-beru_navigation [data-testid="stButton"] button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover {
+  background: var(--b-hover) !important; color: var(--b-text) !important;
+  border-color: transparent !important;
+}
+.stApp [class*="st-key-beru_card_"] [data-testid="stButton"] button {
+  justify-content: flex-start !important; text-align: left !important;
+  background: transparent !important; color: var(--b-text) !important;
+  border: 0 !important; border-radius: 7px !important; box-shadow: none !important;
+  min-height: 38px !important; padding: 6px 0 !important;
+}
+.stApp [class*="st-key-beru_card_"] [data-testid="stButton"] button > div,
+.stApp [class*="st-key-beru_card_"] [data-testid="stButton"] button p {
+  width: 100%; text-align: left; justify-content: flex-start;
+}
+.stApp [class*="st-key-beru_card_"] [data-testid="stButton"] button p {
+  font-size: .9rem; font-weight: 650; line-height: 1.45;
+}
+.stApp [class*="st-key-beru_card_"] [data-testid="stButton"] button:hover {
+  background: transparent !important; color: var(--b-accent) !important; border: 0 !important;
+}
+.stApp [data-testid="stWidgetLabel"] { user-select: none; }
 [data-testid="stButton"] button:is([kind="primary"], [data-testid="stBaseButton-primary"]) { background: var(--b-btn) !important; border-color: var(--b-btn) !important; color: var(--b-on-btn) !important; }
 [data-testid="stButton"] button:is([kind="primary"], [data-testid="stBaseButton-primary"]):hover { background: var(--b-btn2) !important; border-color: var(--b-btn2) !important; color: var(--b-on-btn) !important; }
 [data-testid="stButton"] button:disabled { opacity: .5; cursor: not-allowed; }
@@ -710,7 +741,7 @@ def sidebar() -> str:
         chosen_mode = field(
             st.selectbox, "Help me with", key="beru_mode", default=st.session_state.mode,
             options=list(MODE_LABELS), format_func=lambda value: MODE_LABELS[value],
-            help="Changes the assistant's working mode. Medical and Reverse Engineering use only local tools and a localhost model; they are not professional advice or a malware verdict.",
+            help="Medical, Reverse Engineering, Data Analyst and API modes use a localhost model and restricted tools. Medical results are not professional advice.",
         )
         st.session_state.mode = chosen_mode
         st.caption(MODE_HINTS[chosen_mode])

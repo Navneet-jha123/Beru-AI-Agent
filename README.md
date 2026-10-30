@@ -40,3 +40,32 @@ The existing project security scanner reported 80 `Silent Exception` findings ac
 - `capstone` and `pdfplumber` were not installed in the validation environment. The tools return a clear dependency message if either is missing; installation is handled by the updated requirements file.
 
 This is a reviewed implementation, not a professional medical device, malware verdict, or independent security certification.
+# Local data, API, monitoring, and screen analysis upgrades
+
+Install the added data/YAML dependencies with `pip install -r requirements.txt`.
+Data Analyst mode uses the configured localhost model and exposes read-only
+CSV/SQLite/Excel tools. Data paths must resolve inside this project or its
+workspace; CSV/SQLite results are capped at 1,000 rows.
+
+API mode also requires the local model. Review a spec before ingesting it. Add
+exact DNS names to `BERU_API_ALLOWED_HOSTS`; remote spec URLs and API servers
+must use those hosts. HTTPS and GET-only calls are the defaults. Enable HTTP or
+mutating calls only when required and after reviewing the specific target.
+Credentials belong in environment variables and may be referenced as
+`${ENV:NAME}` in supported auth headers. Specs are retained in process memory;
+restart the app to clear them.
+
+Watchdog resource rules emit a high-resource event only after a 90% CPU/RAM or
+95% disk threshold persists for five minutes. `run_agent` actions are
+read-only-intended background diagnostics with a ten-minute per-rule cooldown.
+Windows service restart is disabled until exact names are listed in
+`BERU_RESTARTABLE_SERVICES`.
+
+Screen UI Automation remains available. Optional YOLO detection needs an
+operator-provided, locally reviewed `.pt` file configured with
+`BERU_YOLO_MODEL`; BERU does not download or train a model automatically.
+Button/input/checkbox detection training requires a labeled local dataset and
+locally stored YOLO weights. `python train_ui_detector.py --dataset
+workspace/ui_data.yaml --weights workspace/yolov8n.pt` prompts for an explicit
+confirmation, then writes output under `workspace/beru_yolo_runs/`. Install
+Ultralytics separately only after reviewing its dependencies.

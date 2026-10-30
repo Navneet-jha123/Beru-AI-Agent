@@ -27,12 +27,13 @@ from typing import List
 TOOL_BUNDLES = {
     "core": [
         # System health and app control
-        "get_system_health", "open_application", "close_application",
+        "get_system_health", "get_top_processes", "open_application", "close_application",
         "take_desktop_screenshot", "send_notification",
         # Memory
         "save_fact", "recall_facts", "save_lesson",
         # Screen UIA (basic)
         "inspect_screen", "click_ui_element", "type_on_screen", "press_key",
+        "detect_screen_elements_yolo", "inspect_screen_hybrid",
         # Browser (basic)
         "browser_open", "browser_search", "browser_read",
         "browser_click", "browser_type", "browser_close",
@@ -56,6 +57,9 @@ TOOL_BUNDLES = {
         "forge_new_tool", "list_pending_tools", "reject_tool",
         "create_build_proposal", "propose_self_heal",
     ],
+
+    "api": ["ingest_openapi_spec", "execute_api_request"],
+    "data_analyst": ["query_csv", "query_sqlite_db", "analyze_excel"],
 
     "tester": [
         "audit_code_security", "synthesize_test_suite",
@@ -111,6 +115,7 @@ TOOL_BUNDLES = {
         "add_trigger_rule", "list_trigger_rules", "delete_trigger_rule",
         "run_benchmark_suite", "list_benchmark_tasks",
         "latest_benchmark_summary", "compare_with_previous",
+        "restart_service",
     ],
 
     "cloud": [
@@ -141,6 +146,8 @@ TOOL_BUNDLES = {
 # keywords cause bundles to always load, defeating the purpose.
 # --------------------------------------------------------------------------- #
 _BUNDLE_KEYWORDS = {
+    "api": ["openapi", "swagger", "api spec", "api endpoint", "rest api", "salesforce", "jira", "stripe", "api request"],
+    "data_analyst": ["csv", "spreadsheet", "excel", "xlsx", "sqlite", "database query", "sql query", "top customers", "analyze data"],
     "developer": [
         "code", "python", "script", "function", "file", "write", "read",
         "patch", "compile", "exe", "build", "git", "commit", "branch",
@@ -239,6 +246,10 @@ def classify_bundles(user_message: str, mode: str = "General") -> List[str]:
         bundles.add("medical")
     elif mode_key == "reverse engineering":
         bundles.add("reverse_engineering")
+    elif mode_key in {"data analyst", "data_analyst"}:
+        bundles.add("data_analyst")
+    elif mode_key == "api":
+        bundles.add("api")
 
     tokens = _tokenize(user_message)
     raw_lower = (user_message or "").lower()

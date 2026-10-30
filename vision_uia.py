@@ -1,7 +1,7 @@
 """
 vision_uia.py - Windows UI Automation & Vision Perception Engine for BERU AI AGENT.
 Combines:
-  1. Native Windows UI Automation (UIA) tree for 100% accurate element identification.
+  1. Native Windows UI Automation (UIA) tree for accessibility-based element identification (results depend on app support).
   2. OCR Engine (Tesseract / EasyOCR fallback) for raw graphics/text on screen.
   3. Closed-loop visual verification (before/after screenshot diff).
   4. Precise mouse/keyboard input automation via pydirectinput / pyautogui.
@@ -230,6 +230,25 @@ def click_element_by_name(target_name: str, double_click: bool = False) -> str:
             return _execute_click(best["x"] + left, best["y"] + top, double_click, f"OCR text '{best['name']}' (match {best_score:.2f})")
     except Exception as e:
         return f"Click search failed: {e}"
+
+    # YOLO is used only for an explicitly named generic control class. If the
+    # detector sees multiple matching controls, refuse to guess which one.
+    aliases = {"text box": "input", "input field": "input", "check box": "checkbox"}
+    requested_class = aliases.get(target_name.strip().casefold(), target_name.strip().casefold())
+    if requested_class in {"button", "input", "checkbox"}:
+        try:
+            vision = json.loads(detect_screen_elements_yolo(max_detections=100))
+            matches = [d for d in vision.get("detections", [])
+                       if str(d.get("label", "")).casefold() == requested_class
+                       and float(d.get("confidence", 0)) >= 0.70]
+            if len(matches) == 1:
+                x1, y1, x2, y2 = matches[0]["screen_box"]
+                return _execute_click(round((x1 + x2) / 2), round((y1 + y2) / 2),
+                                      double_click, f"unique YOLO {requested_class} detection")
+            if len(matches) > 1:
+                return f"Failed safely: YOLO detected {len(matches)} matching {requested_class} controls; specify a unique accessible label."
+        except (ValueError, KeyError, TypeError):
+            pass
 
     return f"Failed: Could not find any UI element matching '{target_name}'."
 
@@ -528,3 +547,55 @@ def detect_screen_hotspots(window_title: str = "") -> str:
         f"Passive/Static Controls: {', '.join(dead_controls) if dead_controls else 'All tested controls responded'}",
     ]
     return "\n".join(lines)
+
+
+def detect_screen_elements_yolo(max_detections: int = 50) -> str:
+    """Run an explicitly configured local YOLO weights file on a desktop screenshot.
+
+    Ultralytics and weights are optional and never downloaded automatically.
+    This returns object labels and coordinates only (no OCR or screenshot upload).
+    """
+    weights = os.getenv("BERU_YOLO_MODEL", "").strip()
+    if not weights:
+        return "Local YOLO is not configured. Set BERU_YOLO_MODEL to a reviewed local .pt weights file. No model was downloaded."
+    try:
+        model_path = Path(weights).expanduser().resolve(strict=True)
+    except (OSError, RuntimeError):
+        return "Configured YOLO weights path could not be resolved."
+    if not model_path.is_file() or model_path.suffix.lower() != ".pt":
+        return "Configured YOLO weights must be an existing local .pt file; automatic model downloads are disabled."
+    try:
+        from ultralytics import YOLO
+    except ImportError:
+        return "Ultralytics is not installed. Install it separately only if you trust its dependencies and model source."
+    try:
+        limit = max(1, min(int(max_detections), 100))
+        image, left, top = capture_screenshot()
+        model = YOLO(str(model_path), task="detect")
+        results = model.predict(source=image, verbose=False, max_det=limit, imgsz=1280)
+        detections = []
+        for result in results[:1]:
+            names = result.names
+            boxes = getattr(result, "boxes", None)
+            if boxes is None:
+                continue
+            for box in list(boxes)[:limit]:
+                cls_id = int(box.cls[0].item())
+                confidence = float(box.conf[0].item())
+                x1, y1, x2, y2 = [round(float(v), 1) for v in box.xyxy[0].tolist()]
+                label = names.get(cls_id, cls_id) if hasattr(names, "get") else (names[cls_id] if cls_id < len(names) else cls_id)
+                detections.append({"label": str(label),
+                                   "confidence": round(confidence, 3),
+                                   "box": [x1, y1, x2, y2],
+                                   "screen_box": [x1 + left, y1 + top, x2 + left, y2 + top]})
+        return json.dumps({"detector": "local YOLO", "weights": model_path.name,
+                           "detections": detections}, ensure_ascii=False)
+    except Exception as exc:
+        return f"Local YOLO detection failed: {type(exc).__name__}: {exc}"
+
+
+def inspect_screen_hybrid(window_keyword: str = "", max_detections: int = 50) -> str:
+    """Combine UI Automation/OCR inspection with optional local YOLO detections."""
+    uia = inspect_screen(window_keyword)
+    visual = detect_screen_elements_yolo(max_detections)
+    return "UI Automation and OCR:\n" + uia[:12000] + "\n\nLocal YOLO detections:\n" + visual[:12000]
